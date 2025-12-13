@@ -10,5 +10,7 @@ These instructions apply to the entire repository.
 - Blocks are introduced with `:` and indented using spaces only (tabs are forbidden).
 
 ## Development notes
-- Build and test using Cargo from the `compiler` directory (`cargo build -p qtrt --release`, `cargo build -p qtri --release`, and `cargo test`). LLVM tools (e.g., `llc`) are required for full builds.
+- Build and test using Cargo from the `compiler` directory (`cargo build -p qtrt --release`, `cargo build -p qtri --release`, and `cargo check/test`). The compiler uses the Cranelift backend, so LLVM is not required, but a system linker (MSVC link.exe or cc) is needed.
 - When adding examples or docs, keep keyword spellings consistent: Quad uses 4-letter keywords; Tri uses 3-letter keywords.
+- **Modules**: Import paths without extensions (e.g., `from "math"`) automatically map to `.quad` or `.tri` files. Imports must appear at the top of the file.
+- **Structs & Methods**: Use `impl` (Quad) or `imp` (Tri) blocks to define methods. The first parameter `self` (Quad) or `slf` (Tri) is required for methods (receivers) but omitted for associated functions.

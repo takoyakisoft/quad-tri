@@ -2,9 +2,10 @@ use crate::ast::*;
 use crate::lex::Span;
 use crate::sem::{SemInfo, Ty};
 use cranelift::prelude::*;
+use cranelift_codegen::ir::StackSlot;
 use cranelift_module::{Linkage, Module};
 use cranelift_object::{ObjectBuilder, ObjectModule};
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 #[derive(Debug)]
 pub struct EmitError {
@@ -95,13 +96,13 @@ pub fn emit_module(prog: &LinkedProgram, sem: &SemInfo) -> Result<Vec<u8>, EmitE
         let mut sig_cl = module.make_signature();
         for (_, ty) in &sig_sem.params {
             sig_cl.params.push(AbiParam::new(ty_cl(
-                *ty,
+                ty.clone(),
                 module.target_config().pointer_type(),
             )));
         }
         if sig_sem.ret != Ty::Void {
             sig_cl.returns.push(AbiParam::new(ty_cl(
-                sig_sem.ret,
+                sig_sem.ret.clone(),
                 module.target_config().pointer_type(),
             )));
         }
@@ -128,13 +129,13 @@ pub fn emit_module(prog: &LinkedProgram, sem: &SemInfo) -> Result<Vec<u8>, EmitE
         ctx.func.signature = module.make_signature();
         for (_, ty) in &sig_sem.params {
             ctx.func.signature.params.push(AbiParam::new(ty_cl(
-                *ty,
+                ty.clone(),
                 module.target_config().pointer_type(),
             )));
         }
         if sig_sem.ret != Ty::Void {
             ctx.func.signature.returns.push(AbiParam::new(ty_cl(
-                sig_sem.ret,
+                sig_sem.ret.clone(),
                 module.target_config().pointer_type(),
             )));
         }
@@ -146,17 +147,39 @@ pub fn emit_module(prog: &LinkedProgram, sem: &SemInfo) -> Result<Vec<u8>, EmitE
             builder.switch_to_block(entry_block);
             builder.seal_block(entry_block);
 
-            let mut vars: HashMap<String, (Variable, Ty)> = HashMap::new();
+            let mut vars: HashMap<String, VarBinding> = HashMap::new();
             let mut var_index = 0;
 
             // Define params as variables
             for (i, (name, ty)) in sig_sem.params.iter().enumerate() {
                 let val = builder.block_params(entry_block)[i];
-                let var = Variable::new(var_index);
-                var_index += 1;
-                builder.declare_var(var, ty_cl(*ty, module.target_config().pointer_type()));
-                builder.def_var(var, val);
-                vars.insert(name.clone(), (var, *ty));
+                match ty {
+                    Ty::Struct(sname) => {
+                        vars.insert(
+                            name.clone(),
+                            VarBinding::StructRef {
+                                addr: val,
+                                name: sname.clone(),
+                            },
+                        );
+                    }
+                    _ => {
+                        let var = Variable::new(var_index);
+                        var_index += 1;
+                        builder.declare_var(
+                            var,
+                            ty_cl(ty.clone(), module.target_config().pointer_type()),
+                        );
+                        builder.def_var(var, val);
+                        vars.insert(
+                            name.clone(),
+                            VarBinding::Scalar {
+                                var,
+                                ty: ty.clone(),
+                            },
+                        );
+                    }
+                }
             }
 
             let ptr_ty = module.target_config().pointer_type();
@@ -171,6 +194,7 @@ pub fn emit_module(prog: &LinkedProgram, sem: &SemInfo) -> Result<Vec<u8>, EmitE
                 user_fns: &user_fns,
                 ptr_ty,
                 sem,
+                layouts: HashMap::new(),
             };
 
             for stmt in &f.body {
@@ -203,7 +227,7 @@ pub fn emit_module(prog: &LinkedProgram, sem: &SemInfo) -> Result<Vec<u8>, EmitE
 struct CompilerCtx<'a, 'b> {
     builder: &'a mut FunctionBuilder<'b>,
     module: &'a mut ObjectModule,
-    vars: Vec<HashMap<String, (Variable, Ty)>>,
+    vars: Vec<HashMap<String, VarBinding>>,
     next_var: usize,
     loops: Vec<(Block, Block)>, // (break_block, continue_block)
     str_data_ids: &'a HashMap<String, cranelift_module::DataId>,
@@ -211,49 +235,204 @@ struct CompilerCtx<'a, 'b> {
     user_fns: &'a HashMap<String, cranelift_module::FuncId>,
     ptr_ty: Type,
     sem: &'a SemInfo,
+    layouts: HashMap<String, StructLayout>,
 }
 
 impl<'a, 'b> CompilerCtx<'a, 'b> {
-    fn get_var(&self, name: &str) -> Option<(Variable, Ty)> {
+    fn get_var(&self, name: &str) -> Option<VarBinding> {
         for scope in self.vars.iter().rev() {
             if let Some(v) = scope.get(name) {
-                return Some(*v);
+                return Some(v.clone());
             }
         }
         None
     }
 
-    fn declare_var(&mut self, name: String, ty: Type, sem_ty: Ty) -> Variable {
+    fn declare_scalar(&mut self, name: String, ty: Type, sem_ty: Ty) -> Variable {
         let var = Variable::new(self.next_var);
         self.next_var += 1;
         self.builder.declare_var(var, ty);
-        self.vars.last_mut().unwrap().insert(name, (var, sem_ty));
+        self.vars
+            .last_mut()
+            .unwrap()
+            .insert(name, VarBinding::Scalar { var, ty: sem_ty });
         var
     }
+}
+
+#[derive(Clone)]
+enum VarBinding {
+    Scalar { var: Variable, ty: Ty },
+    StructOwned { slot: StackSlot, name: String },
+    StructRef { addr: Value, name: String },
+}
+
+#[derive(Clone)]
+struct StructLayout {
+    size: i32,
+    align: i32,
+    fields: Vec<FieldLayout>,
+}
+
+#[derive(Clone)]
+struct FieldLayout {
+    name: String,
+    offset: i32,
+    ty: Ty,
+}
+
+#[derive(Clone)]
+enum ValueKind {
+    Scalar(Value, Ty),
+    StructPtr {
+        addr: Value,
+        ty_name: String,
+        slot: Option<StackSlot>,
+    },
 }
 
 fn compile_stmt(stmt: &Stmt, ctx: &mut CompilerCtx) -> Result<(), EmitError> {
     match stmt {
         Stmt::VarDecl { name, ty, init, .. } => {
-            let (val, _) = compile_expr(init, ctx)?;
-            let sem_ty = parse_ty(ty).unwrap();
-            let t = ty_cl(sem_ty, ctx.ptr_ty);
-            let var = ctx.declare_var(name.clone(), t, sem_ty);
-            ctx.builder.def_var(var, val);
+            let init_val = compile_expr(init, ctx)?;
+            let sem_ty = crate::sem::parse_ty(ty, &ctx.sem.structs).unwrap();
+            match sem_ty {
+                Ty::Struct(ref sname) => {
+                    let layout = get_struct_layout(sname, ctx, init.span())?;
+                    let slot = match init_val {
+                        ValueKind::StructPtr { slot: Some(s), .. } => s,
+                        ValueKind::StructPtr { addr, .. } => {
+                            let align_shift = layout.align.trailing_zeros() as u8;
+                            let new_slot = ctx.builder.create_sized_stack_slot(StackSlotData::new(
+                                StackSlotKind::ExplicitSlot,
+                                layout.size as u32,
+                                align_shift,
+                            ));
+                            let dst = ctx.builder.ins().stack_addr(ctx.ptr_ty, new_slot, 0);
+                            copy_struct(addr, dst, &layout, ctx)?;
+                            new_slot
+                        }
+                        ValueKind::Scalar(_, _) => {
+                            return Err(eerr(init.span(), "expected struct value"));
+                        }
+                    };
+                    ctx.vars.last_mut().unwrap().insert(
+                        name.clone(),
+                        VarBinding::StructOwned {
+                            slot,
+                            name: sname.clone(),
+                        },
+                    );
+                }
+                _ => {
+                    let (val, vty) = match init_val {
+                        ValueKind::Scalar(v, ty) => (v, ty),
+                        ValueKind::StructPtr { .. } => {
+                            return Err(eerr(init.span(), "expected scalar value"))
+                        }
+                    };
+                    if vty != sem_ty {
+                        return Err(eerr(init.span(), "type mismatch in var decl"));
+                    }
+                    let t = ty_cl(sem_ty.clone(), ctx.ptr_ty);
+                    let var = ctx.declare_scalar(name.clone(), t, sem_ty);
+                    ctx.builder.def_var(var, val);
+                }
+            }
         }
-        Stmt::Assign { name, expr, span } => {
-            let (val, _) = compile_expr(expr, ctx)?;
-            let (var, _) = ctx
-                .get_var(name)
-                .ok_or_else(|| eerr(*span, "unknown var"))?;
-            ctx.builder.def_var(var, val);
+        Stmt::Assign { target, expr, span } => {
+            let val = compile_expr(expr, ctx)?;
+            match target {
+                AssignTarget::Name(name) => {
+                    let binding = ctx
+                        .get_var(name)
+                        .ok_or_else(|| eerr(*span, "unknown var"))?;
+                    match binding {
+                        VarBinding::Scalar { var, ty } => {
+                            let (v, vty) = match val {
+                                ValueKind::Scalar(v, t) => (v, t),
+                                ValueKind::StructPtr { .. } => {
+                                    return Err(eerr(*span, "type mismatch in assignment"))
+                                }
+                            };
+                            if vty != ty {
+                                return Err(eerr(*span, "type mismatch in assignment"));
+                            }
+                            ctx.builder.def_var(var, v);
+                        }
+                        VarBinding::StructOwned { slot, name: sname } => {
+                            let src_addr = match val {
+                                ValueKind::StructPtr { addr, ty_name, .. } => {
+                                    if ty_name != sname {
+                                        return Err(eerr(*span, "struct type mismatch"));
+                                    }
+                                    addr
+                                }
+                                _ => return Err(eerr(*span, "type mismatch in assignment")),
+                            };
+                            let layout = get_struct_layout(&sname, ctx, *span)?;
+                            let dst_addr = ctx.builder.ins().stack_addr(ctx.ptr_ty, slot, 0);
+                            copy_struct(src_addr, dst_addr, &layout, ctx)?;
+                        }
+                        VarBinding::StructRef { addr, name: sname } => {
+                            let src_addr = match val {
+                                ValueKind::StructPtr {
+                                    addr: a, ty_name, ..
+                                } => {
+                                    if ty_name != sname {
+                                        return Err(eerr(*span, "struct type mismatch"));
+                                    }
+                                    a
+                                }
+                                _ => return Err(eerr(*span, "type mismatch in assignment")),
+                            };
+                            let layout = get_struct_layout(&sname, ctx, *span)?;
+                            copy_struct(src_addr, addr, &layout, ctx)?;
+                        }
+                    }
+                }
+                AssignTarget::Field { base, field } => {
+                    let binding = ctx
+                        .get_var(base)
+                        .ok_or_else(|| eerr(*span, "unknown var"))?;
+                    let (sname, addr) = match binding {
+                        VarBinding::StructOwned { slot, name } => {
+                            (name, ctx.builder.ins().stack_addr(ctx.ptr_ty, slot, 0))
+                        }
+                        VarBinding::StructRef { addr, name } => (name, addr),
+                        VarBinding::Scalar { .. } => {
+                            return Err(eerr(*span, "field assign on non-struct"))
+                        }
+                    };
+                    let layout = get_struct_layout(&sname, ctx, *span)?;
+                    let fld = layout
+                        .fields
+                        .iter()
+                        .find(|f| f.name.as_str() == field.as_str())
+                        .ok_or_else(|| eerr(*span, "unknown field"))?;
+                    let (v, vty) = match val {
+                        ValueKind::Scalar(v, ty) => (v, ty),
+                        ValueKind::StructPtr { .. } => {
+                            return Err(eerr(*span, "type mismatch in field assignment"))
+                        }
+                    };
+                    if vty != fld.ty {
+                        return Err(eerr(*span, "type mismatch in field assignment"));
+                    }
+                    store_field(addr, fld.offset, v, &fld.ty, ctx)?;
+                }
+            }
         }
         Stmt::Expr { expr, .. } => {
-            compile_expr(expr, ctx)?;
+            let _ = compile_expr(expr, ctx)?;
         }
         Stmt::Back { expr, .. } => {
             if let Some(e) = expr {
-                let (val, _) = compile_expr(e, ctx)?;
+                let val = match compile_expr(e, ctx)? {
+                    ValueKind::Scalar(v, _) => v,
+                    ValueKind::StructPtr { addr, .. } => addr,
+                };
+
                 ctx.builder.ins().return_(&[val]);
             } else {
                 ctx.builder.ins().return_(&[]);
@@ -268,7 +447,7 @@ fn compile_stmt(stmt: &Stmt, ctx: &mut CompilerCtx) -> Result<(), EmitError> {
                 let body_block = ctx.builder.create_block();
                 let next_cond_block = ctx.builder.create_block();
 
-                let (c, _) = compile_expr(cond, ctx)?;
+                let (c, _) = expect_scalar(compile_expr(cond, ctx)?, cond.span())?;
                 ctx.builder
                     .ins()
                     .brif(c, body_block, &[], next_cond_block, &[]);
@@ -313,7 +492,7 @@ fn compile_stmt(stmt: &Stmt, ctx: &mut CompilerCtx) -> Result<(), EmitError> {
             ctx.builder.ins().jump(header_block, &[]);
             ctx.builder.switch_to_block(header_block);
 
-            let (c, _) = compile_expr(cond, ctx)?;
+            let (c, _) = expect_scalar(compile_expr(cond, ctx)?, cond.span())?;
             ctx.builder.ins().brif(c, body_block, &[], exit_block, &[]);
 
             ctx.builder.switch_to_block(body_block);
@@ -353,78 +532,131 @@ fn compile_stmt(stmt: &Stmt, ctx: &mut CompilerCtx) -> Result<(), EmitError> {
     Ok(())
 }
 
-fn compile_expr(expr: &Expr, ctx: &mut CompilerCtx) -> Result<(Value, Ty), EmitError> {
+fn compile_expr(expr: &Expr, ctx: &mut CompilerCtx) -> Result<ValueKind, EmitError> {
     match expr {
-        Expr::Int(n, _) => Ok((ctx.builder.ins().iconst(types::I64, *n), Ty::Int)),
+        Expr::Int(n, _) => Ok(ValueKind::Scalar(
+            ctx.builder.ins().iconst(types::I64, *n),
+            Ty::Int,
+        )),
         Expr::Str(s, _) => {
             let data_id = ctx.str_data_ids.get(s).unwrap();
             let global_val = ctx.module.declare_data_in_func(*data_id, ctx.builder.func);
             let ptr = ctx.builder.ins().global_value(ctx.ptr_ty, global_val);
-            Ok((ptr, Ty::Text))
+            Ok(ValueKind::Scalar(ptr, Ty::Text))
         }
-        Expr::Ident(name, span) => {
-            let (var, ty) = ctx
-                .get_var(name)
-                .ok_or_else(|| eerr(*span, "unknown var"))?;
-            Ok((ctx.builder.use_var(var), ty))
-        }
-        Expr::BuiltinPrint(_) => panic!("builtin print used as value"), // Should be handled in Call
-        Expr::Unary { op, expr, .. } => {
-            let (val, ty) = compile_expr(expr, ctx)?;
-            match op {
-                UnOp::Neg => Ok((ctx.builder.ins().ineg(val), ty)),
-                UnOp::Not => Ok((ctx.builder.ins().bxor_imm(val, 1), ty)), // Logical not for 0/1 bools
+        Expr::Ident(name, span) => match ctx.get_var(name) {
+            Some(VarBinding::Scalar { var, ty }) => {
+                Ok(ValueKind::Scalar(ctx.builder.use_var(var), ty))
             }
+            Some(VarBinding::StructOwned { slot, name }) => Ok(ValueKind::StructPtr {
+                addr: ctx.builder.ins().stack_addr(ctx.ptr_ty, slot, 0),
+                ty_name: name,
+                slot: Some(slot),
+            }),
+            Some(VarBinding::StructRef { addr, name }) => Ok(ValueKind::StructPtr {
+                addr,
+                ty_name: name,
+                slot: None,
+            }),
+            None => Err(eerr(*span, "unknown var")),
+        },
+        Expr::StructLit { name, fields, span } => {
+            let layout = get_struct_layout(name, ctx, *span)?;
+            let align_shift = layout.align.trailing_zeros() as u8;
+            let slot = ctx.builder.create_sized_stack_slot(StackSlotData::new(
+                StackSlotKind::ExplicitSlot,
+                layout.size as u32,
+                align_shift,
+            ));
+            let base = ctx.builder.ins().stack_addr(ctx.ptr_ty, slot, 0);
+            for fld in &layout.fields {
+                let (_, expr, fspan) = fields
+                    .iter()
+                    .find(|(n, _, _)| *n == fld.name)
+                    .ok_or_else(|| eerr(*span, "missing field"))?;
+                let (v, vty) = match compile_expr(expr, ctx)? {
+                    ValueKind::Scalar(v, ty) => (v, ty),
+                    ValueKind::StructPtr { .. } => {
+                        return Err(eerr(*fspan, "nested struct literals not supported"))
+                    }
+                };
+                if vty != fld.ty {
+                    return Err(eerr(*fspan, "field type mismatch"));
+                }
+                store_field(base, fld.offset, v, &fld.ty, ctx)?;
+            }
+            Ok(ValueKind::StructPtr {
+                addr: base,
+                ty_name: name.clone(),
+                slot: Some(slot),
+            })
         }
-        Expr::Binary { op, lhs, rhs, .. } => {
-            let (l, lty) = compile_expr(lhs, ctx)?;
-            let (r, _) = compile_expr(rhs, ctx)?;
-            match op {
-                BinOp::Add => Ok((ctx.builder.ins().iadd(l, r), lty)),
-                BinOp::Sub => Ok((ctx.builder.ins().isub(l, r), lty)),
-                BinOp::Mul => Ok((ctx.builder.ins().imul(l, r), lty)),
-                BinOp::Div => Ok((ctx.builder.ins().sdiv(l, r), lty)), // Signed div
-                BinOp::Mod => Ok((ctx.builder.ins().srem(l, r), lty)),
-                BinOp::Shl => Ok((ctx.builder.ins().ishl(l, r), lty)),
-                BinOp::Shr => Ok((ctx.builder.ins().sshr(l, r), lty)), // Arithmetic shift right
-                BinOp::BitAnd | BinOp::And => Ok((ctx.builder.ins().band(l, r), lty)),
-                BinOp::BitOr | BinOp::Or => Ok((ctx.builder.ins().bor(l, r), lty)),
-                BinOp::BitXor => Ok((ctx.builder.ins().bxor(l, r), lty)),
-                BinOp::Eq => {
-                    let cmp = ctx.builder.ins().icmp(IntCC::Equal, l, r);
-                    Ok((cmp, Ty::Bool))
-                }
-                BinOp::Ne => {
-                    let cmp = ctx.builder.ins().icmp(IntCC::NotEqual, l, r);
-                    Ok((cmp, Ty::Bool))
-                }
-                BinOp::Lt => {
-                    let cmp = ctx.builder.ins().icmp(IntCC::SignedLessThan, l, r);
-                    Ok((cmp, Ty::Bool))
-                }
-                BinOp::Le => {
-                    let cmp = ctx.builder.ins().icmp(IntCC::SignedLessThanOrEqual, l, r);
-                    Ok((cmp, Ty::Bool))
-                }
-                BinOp::Gt => {
-                    let cmp = ctx.builder.ins().icmp(IntCC::SignedGreaterThan, l, r);
-                    Ok((cmp, Ty::Bool))
-                }
-                BinOp::Ge => {
-                    let cmp = ctx
-                        .builder
+        Expr::Field { base, field, span } => match compile_expr(base, ctx)? {
+            ValueKind::StructPtr { addr, ty_name, .. } => {
+                let layout = get_struct_layout(&ty_name, ctx, *span)?;
+                let fld = layout
+                    .fields
+                    .iter()
+                    .find(|f| f.name.as_str() == field.as_str())
+                    .ok_or_else(|| eerr(*span, "unknown field"))?;
+                let val = load_field(addr, fld.offset, &fld.ty, ctx)?;
+                Ok(ValueKind::Scalar(val, fld.ty.clone()))
+            }
+            ValueKind::Scalar(_, _) => Err(eerr(*span, "field access on non-struct")),
+        },
+        Expr::BuiltinPrint(span) => {
+            return Err(eerr(*span, "builtin print cannot be used as a value"))
+        }
+        Expr::Unary { op, expr, span } => {
+            let (val, ty) = expect_scalar(compile_expr(expr, ctx)?, *span)?;
+            let v = match op {
+                UnOp::Neg => ctx.builder.ins().ineg(val),
+                UnOp::Not => ctx.builder.ins().bxor_imm(val, 1),
+            };
+            Ok(ValueKind::Scalar(v, ty))
+        }
+        Expr::Binary { op, lhs, rhs, span } => {
+            let (l, lty) = expect_scalar(compile_expr(lhs, ctx)?, *span)?;
+            let (r, _) = expect_scalar(compile_expr(rhs, ctx)?, *span)?;
+            let (res, ty) = match op {
+                BinOp::Add => (ctx.builder.ins().iadd(l, r), lty.clone()),
+                BinOp::Sub => (ctx.builder.ins().isub(l, r), lty.clone()),
+                BinOp::Mul => (ctx.builder.ins().imul(l, r), lty.clone()),
+                BinOp::Div => (ctx.builder.ins().sdiv(l, r), lty.clone()),
+                BinOp::Mod => (ctx.builder.ins().srem(l, r), lty.clone()),
+                BinOp::Shl => (ctx.builder.ins().ishl(l, r), lty.clone()),
+                BinOp::Shr => (ctx.builder.ins().sshr(l, r), lty.clone()),
+                BinOp::BitAnd | BinOp::And => (ctx.builder.ins().band(l, r), lty.clone()),
+                BinOp::BitOr | BinOp::Or => (ctx.builder.ins().bor(l, r), lty.clone()),
+                BinOp::BitXor => (ctx.builder.ins().bxor(l, r), lty.clone()),
+                BinOp::Eq => (ctx.builder.ins().icmp(IntCC::Equal, l, r), Ty::Bool),
+                BinOp::Ne => (ctx.builder.ins().icmp(IntCC::NotEqual, l, r), Ty::Bool),
+                BinOp::Lt => (
+                    ctx.builder.ins().icmp(IntCC::SignedLessThan, l, r),
+                    Ty::Bool,
+                ),
+                BinOp::Le => (
+                    ctx.builder.ins().icmp(IntCC::SignedLessThanOrEqual, l, r),
+                    Ty::Bool,
+                ),
+                BinOp::Gt => (
+                    ctx.builder.ins().icmp(IntCC::SignedGreaterThan, l, r),
+                    Ty::Bool,
+                ),
+                BinOp::Ge => (
+                    ctx.builder
                         .ins()
-                        .icmp(IntCC::SignedGreaterThanOrEqual, l, r);
-                    Ok((cmp, Ty::Bool))
-                }
-            }
+                        .icmp(IntCC::SignedGreaterThanOrEqual, l, r),
+                    Ty::Bool,
+                ),
+            };
+            Ok(ValueKind::Scalar(res, ty))
         }
         Expr::Call { callee, args, span } => {
             if matches!(&**callee, Expr::BuiltinPrint(_)) {
-                // echo
                 let arg = &args[0];
                 let (val, ty) = match arg {
-                    Arg::Pos(e) => compile_expr(e, ctx)?,
+                    Arg::Pos(e) => expect_scalar(compile_expr(e, ctx)?, *span)?,
                     _ => unreachable!(),
                 };
 
@@ -437,7 +669,94 @@ fn compile_expr(expr: &Expr, ctx: &mut CompilerCtx) -> Result<(Value, Ty), EmitE
                     let func_ref = ctx.module.declare_func_in_func(*fid, ctx.builder.func);
                     ctx.builder.ins().call(func_ref, &[val]);
                 }
-                Ok((ctx.builder.ins().iconst(types::I64, 0), Ty::Void)) // Void return dummy
+                Ok(ValueKind::Scalar(
+                    ctx.builder.ins().iconst(types::I64, 0),
+                    Ty::Void,
+                ))
+            } else if let Expr::Field {
+                base,
+                field,
+                span: field_span,
+            } = &**callee
+            {
+                if let Expr::Ident(type_name, _) = &**base {
+                    let msig = ctx
+                        .sem
+                        .methods
+                        .get(type_name)
+                        .and_then(|m| m.get(field))
+                        .ok_or_else(|| eerr(*field_span, "unknown method"))?;
+                    if msig.has_self {
+                        return Err(eerr(*field_span, "method expects self receiver"));
+                    }
+
+                    let fid = ctx
+                        .user_fns
+                        .get(&msig.symbol)
+                        .ok_or_else(|| eerr(*field_span, "missing method symbol"))?;
+                    let func_ref = ctx.module.declare_func_in_func(*fid, ctx.builder.func);
+
+                    let arg_vals = build_call_args(args, &msig.params, *span, ctx)?;
+                    let call = ctx.builder.ins().call(func_ref, &arg_vals);
+                    let results = ctx.builder.inst_results(call);
+                    if results.is_empty() {
+                        Ok(ValueKind::Scalar(
+                            ctx.builder.ins().iconst(types::I64, 0),
+                            Ty::Void,
+                        ))
+                    } else if let Ty::Struct(name) = &msig.ret {
+                        Ok(ValueKind::StructPtr {
+                            addr: results[0],
+                            ty_name: name.clone(),
+                            slot: None,
+                        })
+                    } else {
+                        Ok(ValueKind::Scalar(results[0], msig.ret.clone()))
+                    }
+                } else {
+                    let recv_val = compile_expr(base, ctx)?;
+                    let (sname, recv_ptr) = match recv_val {
+                        ValueKind::StructPtr { addr, ty_name, .. } => (ty_name, addr),
+                        ValueKind::Scalar(_, _) => {
+                            return Err(eerr(*field_span, "method call requires struct receiver"))
+                        }
+                    };
+                    let msig = ctx
+                        .sem
+                        .methods
+                        .get(&sname)
+                        .and_then(|m| m.get(field))
+                        .ok_or_else(|| eerr(*field_span, "unknown method"))?;
+                    if !msig.has_self {
+                        return Err(eerr(*field_span, "associated function called as method"));
+                    }
+                    let fid = ctx
+                        .user_fns
+                        .get(&msig.symbol)
+                        .ok_or_else(|| eerr(*field_span, "missing method symbol"))?;
+                    let func_ref = ctx.module.declare_func_in_func(*fid, ctx.builder.func);
+
+                    let mut arg_vals = vec![recv_ptr];
+                    let mut rest = build_call_args(args, &msig.params[1..], *span, ctx)?;
+                    arg_vals.append(&mut rest);
+
+                    let call = ctx.builder.ins().call(func_ref, &arg_vals);
+                    let results = ctx.builder.inst_results(call);
+                    if results.is_empty() {
+                        Ok(ValueKind::Scalar(
+                            ctx.builder.ins().iconst(types::I64, 0),
+                            Ty::Void,
+                        ))
+                    } else if let Ty::Struct(name) = &msig.ret {
+                        Ok(ValueKind::StructPtr {
+                            addr: results[0],
+                            ty_name: name.clone(),
+                            slot: None,
+                        })
+                    } else {
+                        Ok(ValueKind::Scalar(results[0], msig.ret.clone()))
+                    }
+                }
             } else if let Expr::Ident(fname, _) = &**callee {
                 let fid = ctx
                     .user_fns
@@ -445,40 +764,24 @@ fn compile_expr(expr: &Expr, ctx: &mut CompilerCtx) -> Result<(Value, Ty), EmitE
                     .ok_or_else(|| eerr(*span, "unknown func"))?;
                 let func_ref = ctx.module.declare_func_in_func(*fid, ctx.builder.func);
 
-                let mut arg_vals = Vec::new();
-                // Handle named/pos args. Sem check ensures correctness.
-                // We need to map args to the order in signature.
                 let sig = ctx.sem.fns.get(fname).unwrap();
-
-                // Simple case: all positional
-                if args.iter().all(|a| matches!(a, Arg::Pos(_))) {
-                    for a in args {
-                        if let Arg::Pos(e) = a {
-                            let (v, _) = compile_expr(e, ctx)?;
-                            arg_vals.push(v);
-                        }
-                    }
-                } else {
-                    // Named args
-                    let mut named_map = HashMap::new();
-                    for a in args {
-                        if let Arg::Named { name, expr, .. } = a {
-                            named_map.insert(name.clone(), expr);
-                        }
-                    }
-                    for (pname, _) in &sig.params {
-                        let e = named_map.get(pname).unwrap();
-                        let (v, _) = compile_expr(e, ctx)?;
-                        arg_vals.push(v);
-                    }
-                }
+                let arg_vals = build_call_args(args, &sig.params, *span, ctx)?;
 
                 let call = ctx.builder.ins().call(func_ref, &arg_vals);
                 let results = ctx.builder.inst_results(call);
                 if results.is_empty() {
-                    Ok((ctx.builder.ins().iconst(types::I64, 0), Ty::Void)) // Void
+                    Ok(ValueKind::Scalar(
+                        ctx.builder.ins().iconst(types::I64, 0),
+                        Ty::Void,
+                    ))
+                } else if let Ty::Struct(name) = &sig.ret {
+                    Ok(ValueKind::StructPtr {
+                        addr: results[0],
+                        ty_name: name.clone(),
+                        slot: None,
+                    })
                 } else {
-                    Ok((results[0], sig.ret))
+                    Ok(ValueKind::Scalar(results[0], sig.ret.clone()))
                 }
             } else {
                 Err(eerr(*span, "invalid call"))
@@ -487,23 +790,204 @@ fn compile_expr(expr: &Expr, ctx: &mut CompilerCtx) -> Result<(Value, Ty), EmitE
     }
 }
 
+fn build_call_args(
+    args: &[Arg],
+    expected: &[(String, Ty)],
+    span: Span,
+    ctx: &mut CompilerCtx,
+) -> Result<Vec<Value>, EmitError> {
+    let mut arg_exprs: Vec<(&Expr, Span)> = Vec::new();
+    if args.iter().all(|a| matches!(a, Arg::Pos(_))) {
+        if args.len() != expected.len() {
+            return Err(eerr(
+                span,
+                format!(
+                    "arg count mismatch: expected {}, got {}",
+                    expected.len(),
+                    args.len()
+                ),
+            ));
+        }
+        for a in args {
+            if let Arg::Pos(e) = a {
+                arg_exprs.push((e, e.span()));
+            }
+        }
+    } else {
+        let mut named_map = HashMap::<String, (&Expr, Span)>::new();
+        for a in args {
+            match a {
+                Arg::Named { name, expr, span } => {
+                    if named_map.insert(name.clone(), (expr, *span)).is_some() {
+                        return Err(eerr(*span, "duplicate named arg"));
+                    }
+                }
+                Arg::Pos(e) => return Err(eerr(e.span(), "cannot mix named and positional args")),
+            }
+        }
+
+        let param_names: HashSet<_> = expected.iter().map(|(n, _)| n.clone()).collect();
+        for (k, (_, arg_span)) in &named_map {
+            if !param_names.contains(k) {
+                return Err(eerr(*arg_span, format!("unknown parameter: {k}")));
+            }
+        }
+        if named_map.len() != expected.len() {
+            return Err(eerr(
+                span,
+                format!(
+                    "argument count mismatch for named call: expected {}, got {}",
+                    expected.len(),
+                    named_map.len()
+                ),
+            ));
+        }
+        for (pname, _) in expected {
+            let (expr, arg_sp) = named_map
+                .get(pname)
+                .ok_or_else(|| eerr(span, format!("missing parameter: {pname}")))?;
+            arg_exprs.push((expr, *arg_sp));
+        }
+    }
+
+    let mut arg_vals = Vec::new();
+    for (i, (expr_ref, arg_sp)) in arg_exprs.iter().enumerate() {
+        let expected_ty = &expected[i].1;
+        match expected_ty {
+            Ty::Struct(sname) => {
+                let ptr = match compile_expr(expr_ref, ctx)? {
+                    ValueKind::StructPtr { addr, ty_name, .. } => {
+                        if &ty_name != sname {
+                            return Err(eerr(*arg_sp, "struct arg type mismatch"));
+                        }
+                        addr
+                    }
+                    ValueKind::Scalar(_, _) => return Err(eerr(*arg_sp, "expected struct arg")),
+                };
+                arg_vals.push(ptr);
+            }
+            _ => {
+                let (v, vty) = expect_scalar(compile_expr(expr_ref, ctx)?, *arg_sp)?;
+                if &vty != expected_ty {
+                    return Err(eerr(*arg_sp, "arg type mismatch"));
+                }
+                arg_vals.push(v);
+            }
+        }
+    }
+
+    Ok(arg_vals)
+}
+
+fn expect_scalar(v: ValueKind, span: Span) -> Result<(Value, Ty), EmitError> {
+    match v {
+        ValueKind::Scalar(v, ty) => Ok((v, ty)),
+        ValueKind::StructPtr { .. } => Err(eerr(span, "expected scalar value")),
+    }
+}
+
 fn ty_cl(t: Ty, ptr_ty: Type) -> Type {
     match t {
         Ty::Int => types::I64,
         Ty::Bool => types::I8,
         Ty::Text => ptr_ty,
+        Ty::Struct(_) => ptr_ty,
         Ty::Void => types::I64, // Should not happen in params/ret usually, handled separately
     }
 }
 
-fn parse_ty(s: &str) -> Option<Ty> {
-    Some(match s {
-        "intg" | "int" => Ty::Int,
-        "bool" | "bol" => Ty::Bool,
-        "text" | "txt" => Ty::Text,
-        "void" | "vod" => Ty::Void,
-        _ => return None,
+fn load_field(
+    base: Value,
+    offset: i32,
+    ty: &Ty,
+    ctx: &mut CompilerCtx,
+) -> Result<Value, EmitError> {
+    let cl_ty = ty_cl(ty.clone(), ctx.ptr_ty);
+    Ok(ctx.builder.ins().load(cl_ty, MemFlags::new(), base, offset))
+}
+
+fn store_field(
+    base: Value,
+    offset: i32,
+    val: Value,
+    ty: &Ty,
+    ctx: &mut CompilerCtx,
+) -> Result<(), EmitError> {
+    ctx.builder.ins().store(MemFlags::new(), val, base, offset);
+    let _ = ty;
+    Ok(())
+}
+
+fn copy_struct(
+    src: Value,
+    dst: Value,
+    layout: &StructLayout,
+    ctx: &mut CompilerCtx,
+) -> Result<(), EmitError> {
+    for fld in &layout.fields {
+        let v = load_field(src, fld.offset, &fld.ty, ctx)?;
+        store_field(dst, fld.offset, v, &fld.ty, ctx)?;
+    }
+    Ok(())
+}
+
+fn get_struct_layout(
+    name: &str,
+    ctx: &mut CompilerCtx,
+    span: Span,
+) -> Result<StructLayout, EmitError> {
+    if let Some(l) = ctx.layouts.get(name) {
+        return Ok(l.clone());
+    }
+    let sinfo = ctx
+        .sem
+        .structs
+        .get(name)
+        .ok_or_else(|| eerr(span, "unknown struct"))?;
+    let mut offset = 0i32;
+    let mut align = 1i32;
+    let mut fields = Vec::new();
+    for (fname, fty) in &sinfo.fields {
+        let (sz, al) = ty_size_align(fty, ctx, span)?;
+        offset = align_up(offset, al);
+        align = align.max(al);
+        fields.push(FieldLayout {
+            name: fname.clone(),
+            offset,
+            ty: fty.clone(),
+        });
+        offset += sz;
+    }
+    let size = align_up(offset, align);
+    let layout = StructLayout {
+        size,
+        align,
+        fields,
+    };
+    ctx.layouts.insert(name.to_string(), layout.clone());
+    Ok(layout)
+}
+
+fn ty_size_align(ty: &Ty, ctx: &mut CompilerCtx, span: Span) -> Result<(i32, i32), EmitError> {
+    let ptr_bytes = ctx.module.target_config().pointer_bytes() as i32;
+    Ok(match ty {
+        Ty::Int => (8, 8),
+        Ty::Bool => (1, 1),
+        Ty::Text | Ty::Struct(_) => (ptr_bytes, ptr_bytes),
+        Ty::Void => return Err(eerr(span, "void has no size")),
     })
+}
+
+fn align_up(n: i32, align: i32) -> i32 {
+    if align <= 1 {
+        return n;
+    }
+    let rem = n % align;
+    if rem == 0 {
+        n
+    } else {
+        n + (align - rem)
+    }
 }
 
 fn mangle(name: &str) -> String {
@@ -579,6 +1063,12 @@ fn collect_strings_expr(
             }
         }
         Expr::Unary { expr, .. } => collect_strings_expr(expr, map, next),
+        Expr::Field { base, .. } => collect_strings_expr(base, map, next),
+        Expr::StructLit { fields, .. } => {
+            for (_, e, _) in fields {
+                collect_strings_expr(e, map, next);
+            }
+        }
         Expr::Binary { lhs, rhs, .. } => {
             collect_strings_expr(lhs, map, next);
             collect_strings_expr(rhs, map, next);
