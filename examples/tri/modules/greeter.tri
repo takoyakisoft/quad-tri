@@ -1,0 +1,3 @@
+def greet(name: txt) -> vod:
+    prn("hello, ")
+    prn(name)

@@ -1,0 +1,15 @@
+use "math.tri"
+use "greeter.tri"
+
+def main() -> int:
+    greet("Tri modules")
+
+    var sum: int := add(3, 4)
+    prn("3 + 4 =")
+    prn(sum)
+
+    var fact_val: int := fact(5)
+    prn("5! =")
+    prn(fact_val)
+
+    ret 0

@@ -28,3 +28,7 @@ logic:   &&  ||
 ## Blocks
 - `:` then INDENT block
 - INDENT/DEDENT are based on spaces only (tabs forbidden)
+
+## Modules
+- `from "path/to/file.quad"` at the top level loads another Quad source file before the current one is type-checked.
+- Paths are resolved relative to the importing file.

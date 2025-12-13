@@ -1,0 +1,3 @@
+func greet(name: text) -> void:
+    echo("hello, ")
+    echo(name)
