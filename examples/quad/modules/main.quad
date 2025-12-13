@@ -1,5 +1,5 @@
-from "math.quad"
-from "greeter.quad"
+from "math"
+from "greeter"
 
 func main() -> intg:
     greet("Quad modules")

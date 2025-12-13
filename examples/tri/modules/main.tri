@@ -1,5 +1,5 @@
-use "math.tri"
-use "greeter.tri"
+use "math"
+use "greeter"
 
 def main() -> int:
     greet("Tri modules")

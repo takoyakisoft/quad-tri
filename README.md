@@ -14,8 +14,8 @@ Two indentation-based language prototypes.
 Quad uses four-letter keywords and `from` imports. A minimal module-based program (see `examples/quad/modules`):
 
 ```quad
-from "math.quad"
-from "greeter.quad"
+from "math"
+from "greeter"
 
 func main() -> intg:
     greet("Quad modules")
@@ -34,8 +34,8 @@ func main() -> intg:
 Tri mirrors the same program with three-letter keywords and `use` imports (see `examples/tri/modules`):
 
 ```tri
-use "math.tri"
-use "greeter.tri"
+use "math"
+use "greeter"
 
 def main() -> int:
     greet("Tri modules")
@@ -85,4 +85,15 @@ cargo run -p qtri --release -- build --lang quad ../examples/quad/modules/main.q
 
 cargo run -p qtri --release -- build --lang tri  ../examples/tri/modules/main.tri -o target/tmp/tri_modules.exe
 ./target/tmp/tri_modules.exe
+
+# Build & run struct examples (impl/imp with implicit self)
+cargo run -p qtri --release -- build --lang quad ../examples/quad/structs.quad -o target/tmp/quad_structs.exe
+./target/tmp/quad_structs.exe
+
+cargo run -p qtri --release -- build --lang tri  ../examples/tri/structs.tri -o target/tmp/tri_structs.exe
+./target/tmp/tri_structs.exe
 ```
+
+## Roadmap toward self-hosting
+
+See `spec/stage1.md` for the prioritized feature list (structs, dynamic arrays, etc.) needed before the Quad/Tri compiler can be built by Quad/Tri themselves.

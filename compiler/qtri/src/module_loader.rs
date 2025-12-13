@@ -45,10 +45,33 @@ impl std::fmt::Display for LoadError {
 impl std::error::Error for LoadError {}
 
 pub fn load_program(lang: Language, entry: &Path) -> Result<LinkedProgram, LoadError> {
+    let mut structs = Vec::new();
     let mut funcs = Vec::new();
     let mut visited = HashSet::<PathBuf>::new();
-    load_one(lang, entry, None, &mut visited, &mut funcs)?;
-    Ok(LinkedProgram { funcs })
+    load_one(
+        lang,
+        entry,
+        None,
+        &mut visited,
+        &mut structs,
+        &mut funcs,
+    )?;
+    Ok(LinkedProgram { structs, funcs })
+}
+
+fn append_default_extension(lang: Language, path: &Path) -> PathBuf {
+    if path.extension().is_some() {
+        return path.to_path_buf();
+    }
+
+    let mut with_ext = path.to_path_buf();
+    let ext = match lang {
+        Language::Quad => "quad",
+        Language::Tri => "tri",
+    };
+
+    with_ext.set_extension(ext);
+    with_ext
 }
 
 fn load_one(
@@ -56,6 +79,7 @@ fn load_one(
     path: &Path,
     import_span: Option<Span>,
     visited: &mut HashSet<PathBuf>,
+    structs: &mut Vec<crate::ast::StructDef>,
     funcs: &mut Vec<crate::ast::Func>,
 ) -> Result<(), LoadError> {
     let canonical = std::fs::canonicalize(path).map_err(|e| LoadError::Io {
@@ -83,10 +107,12 @@ fn load_one(
         .unwrap_or_else(|| PathBuf::from("."));
 
     for import in parsed.imports {
-        let target = base_dir.join(import.path);
-        load_one(lang, &target, Some(import.span), visited, funcs)?;
+        let target = base_dir.join(&import.path);
+        let target = append_default_extension(lang, &target);
+        load_one(lang, &target, Some(import.span), visited, structs, funcs)?;
     }
 
+    structs.extend(parsed.structs);
     funcs.extend(parsed.funcs);
     Ok(())
 }
@@ -112,11 +138,11 @@ mod tests {
         let dir = tempdir().unwrap();
         let root = dir.path();
 
-        let lib = write_file(root, "lib.qd", "func helper() -> intg:\n    back 1\n");
+        let lib = write_file(root, "lib.quad", "func helper() -> intg:\n    back 1\n");
         let entry = write_file(
             root,
-            "main.qd",
-            "from \"lib.qd\"\n\nfunc main() -> intg:\n    back helper()\n",
+            "main.quad",
+            "from \"lib\"\n\nfunc main() -> intg:\n    back helper()\n",
         );
 
         let program = load_program(Language::Quad, &entry).expect("program loads");
@@ -131,16 +157,16 @@ mod tests {
         let dir = tempdir().unwrap();
         let root = dir.path();
 
-        write_file(root, "pkg/util.qd", "func util() -> intg:\n    back 2\n");
+        write_file(root, "pkg/util.quad", "func util() -> intg:\n    back 2\n");
         write_file(
             root,
-            "pkg/mod.qd",
-            "from \"util.qd\"\n\nfunc mid() -> intg:\n    back util()\n",
+            "pkg/mod.quad",
+            "from \"util\"\n\nfunc mid() -> intg:\n    back util()\n",
         );
         let entry = write_file(
             root,
-            "main.qd",
-            "from \"pkg/mod.qd\"\n\nfunc main() -> intg:\n    back mid()\n",
+            "main.quad",
+            "from \"pkg/mod\"\n\nfunc main() -> intg:\n    back mid()\n",
         );
 
         let program = load_program(Language::Quad, &entry).expect("program loads");
@@ -154,8 +180,8 @@ mod tests {
         let dir = tempdir().unwrap();
         let root = dir.path();
 
-        let a = write_file(root, "a.tr", "use \"b.tr\"\n\ndef a() -> int:\n    ret 1\n");
-        write_file(root, "b.tr", "use \"a.tr\"\n\ndef b() -> int:\n    ret 2\n");
+        let a = write_file(root, "a.tri", "use \"b\"\n\ndef a() -> int:\n    ret 1\n");
+        write_file(root, "b.tri", "use \"a\"\n\ndef b() -> int:\n    ret 2\n");
 
         let program = load_program(Language::Tri, &a).expect("program loads");
         let names: Vec<_> = program.funcs.iter().map(|f| f.name.as_str()).collect();

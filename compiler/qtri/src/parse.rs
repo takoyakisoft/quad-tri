@@ -23,6 +23,7 @@ pub fn parse_program(tokens: &[Token]) -> Result<Program, ParseError> {
     let mut p = Parser { tokens, i: 0 };
     p.skip_newlines();
     let mut imports = Vec::new();
+    let mut structs = Vec::new();
     let mut funcs = Vec::new();
     // Parse imports first
     while !p.at_eof() {
@@ -34,17 +35,36 @@ pub fn parse_program(tokens: &[Token]) -> Result<Program, ParseError> {
         }
     }
 
-    // Then parse functions
+    // Then definitions and implementations (type/impl/func)
     while !p.at_eof() {
-        if let TokKind::Kw(Kw::Func) = p.peek().kind {
-            funcs.push(p.parse_func()?);
-            p.skip_newlines();
-        } else {
-            let t = p.peek();
-            return Err(perr(t.span, format!("expected func, got {:?}", t.kind)));
+        match p.peek().kind {
+            TokKind::Kw(Kw::Type) => {
+                structs.push(p.parse_struct()?);
+                p.skip_newlines();
+            }
+            TokKind::Kw(Kw::Impl) => {
+                funcs.extend(p.parse_impl()?);
+                p.skip_newlines();
+            }
+            TokKind::Kw(Kw::Func) => {
+                funcs.push(p.parse_func(None)?);
+                p.skip_newlines();
+            }
+            TokKind::Eof => break,
+            _ => {
+                let t = p.peek();
+                return Err(perr(
+                    t.span,
+                    format!("expected type/impl/func, got {:?}", t.kind),
+                ));
+            }
         }
     }
-    Ok(Program { imports, funcs })
+    Ok(Program {
+        imports,
+        structs,
+        funcs,
+    })
 }
 
 struct Parser<'a> {
@@ -143,12 +163,67 @@ impl<'a> Parser<'a> {
         Ok(Import { path, span: sp })
     }
 
-    fn parse_func(&mut self) -> Result<Func, ParseError> {
+    fn parse_struct(&mut self) -> Result<StructDef, ParseError> {
+        let sp = self.expect_kw(Kw::Type)?;
+        let (name, _) = self.take_ident()?;
+        self.expect(TokKind::LBrace)?;
+        self.skip_newlines();
+
+        let mut fields = Vec::new();
+        if self.peek().kind != TokKind::RBrace {
+            loop {
+                let (fname, fsp) = self.take_ident()?;
+                self.expect(TokKind::Colon)?;
+                let (fty, _) = self.take_ident()?;
+                fields.push(Param {
+                    name: fname,
+                    ty: fty,
+                    mutable: false,
+                    span: fsp,
+                });
+
+                if self.peek().kind == TokKind::Comma {
+                    self.next();
+                    self.skip_newlines();
+                    continue;
+                }
+                break;
+            }
+        }
+
+        self.expect(TokKind::RBrace)?;
+        self.expect(TokKind::Newline)?;
+
+        Ok(StructDef {
+            name,
+            fields,
+            span: sp,
+        })
+    }
+
+    fn parse_impl(&mut self) -> Result<Vec<Func>, ParseError> {
+        self.expect_kw(Kw::Impl)?;
+        let (ty_name, _) = self.take_ident()?;
+        self.expect(TokKind::Colon)?;
+        self.expect(TokKind::Newline)?;
+        self.expect(TokKind::Indent)?;
+        self.skip_newlines();
+
+        let mut funcs = Vec::new();
+        while self.peek().kind != TokKind::Dedent {
+            funcs.push(self.parse_func(Some(&ty_name))?);
+            self.skip_newlines();
+        }
+        self.expect(TokKind::Dedent)?;
+        Ok(funcs)
+    }
+
+    fn parse_func(&mut self, impl_target: Option<&str>) -> Result<Func, ParseError> {
         let func_span = self.expect_kw(Kw::Func)?;
         let (name, _) = self.take_ident()?;
 
         self.expect(TokKind::LParen)?;
-        let params = self.parse_params()?;
+        let params = self.parse_params(impl_target)?;
         self.expect(TokKind::RParen)?;
 
         let mut ret_ty: Option<String> = None;
@@ -161,8 +236,23 @@ impl<'a> Parser<'a> {
         self.expect(TokKind::Colon)?;
         self.expect(TokKind::Newline)?;
         let body = self.parse_block()?;
+
+        let method = impl_target.map(|ty| MethodInfo {
+            type_name: ty.to_string(),
+            method_name: name.clone(),
+            has_self: params
+                .first()
+                .map(|p| p.name == "self" || p.name == "slf")
+                .unwrap_or(false),
+        });
+        let full_name = if let Some(info) = &method {
+            format!("{}__{}", info.type_name, name)
+        } else {
+            name.clone()
+        };
         Ok(Func {
-            name,
+            method,
+            name: full_name,
             params,
             ret_ty,
             body,
@@ -170,16 +260,59 @@ impl<'a> Parser<'a> {
         })
     }
 
-    fn parse_params(&mut self) -> Result<Vec<Param>, ParseError> {
+    fn parse_params(&mut self, impl_target: Option<&str>) -> Result<Vec<Param>, ParseError> {
         let mut out = Vec::new();
         if self.peek().kind == TokKind::RParen {
             return Ok(out);
         }
         loop {
+            let t = self.peek();
+            if out.is_empty() {
+                if matches!(t.kind, TokKind::Kw(Kw::Self_)) {
+                    let sp = t.span;
+                    self.next();
+                    let ty = impl_target
+                        .ok_or_else(|| perr(sp, "self is only allowed inside impl"))?
+                        .to_string();
+                    out.push(Param {
+                        name: "self".to_string(),
+                        ty,
+                        mutable: true,
+                        span: sp,
+                    });
+                    if self.peek().kind == TokKind::Comma {
+                        self.next();
+                        continue;
+                    }
+                    if self.peek().kind == TokKind::RParen {
+                        break;
+                    }
+                }
+            }
+
             let (name, sp) = self.take_ident()?;
-            self.expect(TokKind::Colon)?;
-            let (ty, _) = self.take_ident()?;
-            out.push(Param { name, ty, span: sp });
+            let is_self = out.is_empty() && (name == "self" || name == "slf");
+            if is_self {
+                let ty = impl_target
+                    .ok_or_else(|| perr(sp, "self is only allowed inside impl"))?
+                    .to_string();
+                let mut_ty = ty.clone();
+                out.push(Param {
+                    name,
+                    ty: mut_ty,
+                    mutable: true,
+                    span: sp,
+                });
+            } else {
+                self.expect(TokKind::Colon)?;
+                let (ty, _) = self.take_ident()?;
+                out.push(Param {
+                    name,
+                    ty,
+                    mutable: false,
+                    span: sp,
+                });
+            }
 
             if self.peek().kind == TokKind::Comma {
                 self.next();
@@ -222,8 +355,13 @@ impl<'a> Parser<'a> {
             }
             TokKind::Kw(Kw::Back) => self.parse_back(),
 
-            // assignment starts with Ident then :=
-            TokKind::Ident(_) if self.peek_n(1).kind == TokKind::Assign => self.parse_assign(),
+            // assignment starts with Ident then := (optionally via .field)
+            TokKind::Ident(_) if self.peek_n(1).kind == TokKind::Assign
+                || (self.peek_n(1).kind == TokKind::Dot
+                    && self.peek_n(3).kind == TokKind::Assign) =>
+            {
+                self.parse_assign()
+            }
 
             // otherwise: expression statement (echo(...), foo(...), etc.)
             _ => {
@@ -261,11 +399,21 @@ impl<'a> Parser<'a> {
 
     fn parse_assign(&mut self) -> Result<Stmt, ParseError> {
         let (name, sp) = self.take_ident()?;
+        let target = if self.peek().kind == TokKind::Dot {
+            self.next();
+            let (field, _) = self.take_ident()?;
+            AssignTarget::Field {
+                base: name,
+                field,
+            }
+        } else {
+            AssignTarget::Name(name)
+        };
         self.expect(TokKind::Assign)?;
         let expr = self.parse_expr(0)?;
         self.expect(TokKind::Newline)?;
         Ok(Stmt::Assign {
-            name,
+            target,
             expr,
             span: sp,
         })
@@ -352,6 +500,16 @@ impl<'a> Parser<'a> {
                     span: call_span,
                 };
                 continue;
+            } else if self.peek().kind == TokKind::Dot {
+                let field_span = self.peek().span;
+                self.next();
+                let (fname, _) = self.take_ident()?;
+                lhs = Expr::Field {
+                    base: Box::new(lhs),
+                    field: fname,
+                    span: field_span,
+                };
+                continue;
             }
 
             let (op, l_bp, r_bp, non_assoc) = match infix_bp(&self.peek().kind) {
@@ -419,7 +577,18 @@ impl<'a> Parser<'a> {
                 let sp = t.span;
                 let s = s.clone();
                 self.next();
-                Ok(Expr::Ident(s, sp))
+                if self.peek().kind == TokKind::LBrace {
+                    self.next();
+                    let fields = self.parse_struct_fields()?;
+                    self.expect(TokKind::RBrace)?;
+                    Ok(Expr::StructLit {
+                        name: s,
+                        fields,
+                        span: sp,
+                    })
+                } else {
+                    Ok(Expr::Ident(s, sp))
+                }
             }
             TokKind::Kw(Kw::Print) => {
                 let sp = t.span;
@@ -488,6 +657,29 @@ impl<'a> Parser<'a> {
             break;
         }
         Ok(args)
+    }
+
+    fn parse_struct_fields(&mut self) -> Result<Vec<(String, Expr, Span)>, ParseError> {
+        let mut fields = Vec::new();
+        self.skip_newlines();
+        if self.peek().kind == TokKind::RBrace {
+            return Ok(fields);
+        }
+
+        loop {
+            let (name, sp) = self.take_ident()?;
+            self.expect(TokKind::Colon)?;
+            let expr = self.parse_expr(0)?;
+            fields.push((name, expr, sp));
+
+            if self.peek().kind == TokKind::Comma {
+                self.next();
+                self.skip_newlines();
+                continue;
+            }
+            break;
+        }
+        Ok(fields)
     }
 }
 
