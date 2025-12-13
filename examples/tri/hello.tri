@@ -1,0 +1,11 @@
+def main() -> int:
+    var x: int := 0
+    for x < 3:
+        prn("x=")
+        prn(x)
+        x := x + 1
+    iff x == 3:
+        prn("done")
+    els:
+        prn("ng")
+    ret 0

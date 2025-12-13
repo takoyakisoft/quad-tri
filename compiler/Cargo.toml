@@ -1,0 +1,3 @@
+[workspace]
+members = ["quad0", "quadrt"]
+resolver = "2"

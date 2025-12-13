@@ -1,0 +1,11 @@
+func main() -> intg:
+    vars x: intg := 0
+    loop x < 3:
+        echo("x=")
+        echo(x)
+        x := x + 1
+    when x == 3:
+        echo("done")
+    else:
+        echo("ng")
+    back 0
