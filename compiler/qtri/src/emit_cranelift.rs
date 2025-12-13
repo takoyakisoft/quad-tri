@@ -1,29 +1,44 @@
-use std::collections::HashMap;
 use crate::ast::*;
-use crate::sem::{SemInfo, Ty};
 use crate::lex::Span;
+use crate::sem::{SemInfo, Ty};
 use cranelift::prelude::*;
 use cranelift_module::{Linkage, Module};
 use cranelift_object::{ObjectBuilder, ObjectModule};
+use std::collections::HashMap;
 
 #[derive(Debug)]
-pub struct EmitError { pub span: Span, pub msg: String }
+pub struct EmitError {
+    pub span: Span,
+    pub msg: String,
+}
 impl std::fmt::Display for EmitError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "{}:{}: {}", self.span.line, self.span.col, self.msg)
     }
 }
 impl std::error::Error for EmitError {}
-fn eerr(span: Span, msg: impl Into<String>) -> EmitError { EmitError { span, msg: msg.into() } }
+fn eerr(span: Span, msg: impl Into<String>) -> EmitError {
+    EmitError {
+        span,
+        msg: msg.into(),
+    }
+}
 
-pub fn emit_module(prog: &Program, sem: &SemInfo) -> Result<Vec<u8>, EmitError> {
+pub fn emit_module(prog: &LinkedProgram, sem: &SemInfo) -> Result<Vec<u8>, EmitError> {
     let flag_builder = settings::builder();
-    let isa_builder = cranelift_native::builder().map_err(|e| eerr(Span{line:0,col:0}, e.to_string()))?;
-    let isa = isa_builder.finish(settings::Flags::new(flag_builder)).map_err(|e| eerr(Span{line:0,col:0}, e.to_string()))?;
+    let isa_builder =
+        cranelift_native::builder().map_err(|e| eerr(Span { line: 0, col: 0 }, e.to_string()))?;
+    let isa = isa_builder
+        .finish(settings::Flags::new(flag_builder))
+        .map_err(|e| eerr(Span { line: 0, col: 0 }, e.to_string()))?;
 
-    let object_builder = ObjectBuilder::new(isa, "quad_module", cranelift_module::default_libcall_names())
-        .map_err(|e| eerr(Span{line:0,col:0}, e.to_string()))?;
-    
+    let object_builder = ObjectBuilder::new(
+        isa,
+        "quad_module",
+        cranelift_module::default_libcall_names(),
+    )
+    .map_err(|e| eerr(Span { line: 0, col: 0 }, e.to_string()))?;
+
     let mut module = ObjectModule::new(object_builder);
     let mut ctx = module.make_context();
     let mut func_ctx = FunctionBuilderContext::new();
@@ -39,48 +54,68 @@ pub fn emit_module(prog: &Program, sem: &SemInfo) -> Result<Vec<u8>, EmitError> 
 
     for (text, (gname, s_null, _n)) in &str_map {
         data_ctx.define(s_null.as_bytes().to_vec().into_boxed_slice());
-        let id = module.declare_data(gname, Linkage::Local, true, false)
-            .map_err(|e| eerr(Span{line:0,col:0}, e.to_string()))?;
-        module.define_data(id, &data_ctx)
-            .map_err(|e| eerr(Span{line:0,col:0}, e.to_string()))?;
+        let id = module
+            .declare_data(gname, Linkage::Local, true, false)
+            .map_err(|e| eerr(Span { line: 0, col: 0 }, e.to_string()))?;
+        module
+            .define_data(id, &data_ctx)
+            .map_err(|e| eerr(Span { line: 0, col: 0 }, e.to_string()))?;
         data_ctx.clear();
         str_data_ids.insert(text.clone(), id);
     }
 
     // 2. Declare external functions
     let mut ext_fns: HashMap<String, cranelift_module::FuncId> = HashMap::new();
-    
+
     // quad_echo_i64
     let mut sig_echo_i64 = module.make_signature();
     sig_echo_i64.params.push(AbiParam::new(types::I64));
-    let id_echo_i64 = module.declare_function("quad_echo_i64", Linkage::Import, &sig_echo_i64)
-        .map_err(|e| eerr(Span{line:0,col:0}, e.to_string()))?;
+    let id_echo_i64 = module
+        .declare_function("quad_echo_i64", Linkage::Import, &sig_echo_i64)
+        .map_err(|e| eerr(Span { line: 0, col: 0 }, e.to_string()))?;
     ext_fns.insert("quad_echo_i64".to_string(), id_echo_i64);
 
     // quad_echo_cstr
     let mut sig_echo_cstr = module.make_signature();
-    sig_echo_cstr.params.push(AbiParam::new(module.target_config().pointer_type()));
-    let id_echo_cstr = module.declare_function("quad_echo_cstr", Linkage::Import, &sig_echo_cstr)
-        .map_err(|e| eerr(Span{line:0,col:0}, e.to_string()))?;
+    sig_echo_cstr
+        .params
+        .push(AbiParam::new(module.target_config().pointer_type()));
+    let id_echo_cstr = module
+        .declare_function("quad_echo_cstr", Linkage::Import, &sig_echo_cstr)
+        .map_err(|e| eerr(Span { line: 0, col: 0 }, e.to_string()))?;
     ext_fns.insert("quad_echo_cstr".to_string(), id_echo_cstr);
 
     // 3. Declare all user functions first (to handle forward references)
     let mut user_fns: HashMap<String, cranelift_module::FuncId> = HashMap::new();
     for f in &prog.funcs {
-        let sig_sem = sem.fns.get(&f.name).ok_or_else(|| eerr(f.span, "missing sem sig"))?;
+        let sig_sem = sem
+            .fns
+            .get(&f.name)
+            .ok_or_else(|| eerr(f.span, "missing sem sig"))?;
         let mut sig_cl = module.make_signature();
         for (_, ty) in &sig_sem.params {
-            sig_cl.params.push(AbiParam::new(ty_cl(*ty, module.target_config().pointer_type())));
+            sig_cl.params.push(AbiParam::new(ty_cl(
+                *ty,
+                module.target_config().pointer_type(),
+            )));
         }
         if sig_sem.ret != Ty::Void {
-            sig_cl.returns.push(AbiParam::new(ty_cl(sig_sem.ret, module.target_config().pointer_type())));
+            sig_cl.returns.push(AbiParam::new(ty_cl(
+                sig_sem.ret,
+                module.target_config().pointer_type(),
+            )));
         }
-        
+
         let fname = mangle(&f.name);
         // main is exported, others local? For now export all or make main exported.
         // The driver expects `quad_main`.
-        let linkage = if f.name == "main" { Linkage::Export } else { Linkage::Local };
-        let id = module.declare_function(&fname, linkage, &sig_cl)
+        let linkage = if f.name == "main" {
+            Linkage::Export
+        } else {
+            Linkage::Local
+        };
+        let id = module
+            .declare_function(&fname, linkage, &sig_cl)
             .map_err(|e| eerr(f.span, e.to_string()))?;
         user_fns.insert(f.name.clone(), id);
     }
@@ -89,13 +124,19 @@ pub fn emit_module(prog: &Program, sem: &SemInfo) -> Result<Vec<u8>, EmitError> 
     for f in &prog.funcs {
         let fid = user_fns.get(&f.name).unwrap();
         let sig_sem = sem.fns.get(&f.name).unwrap();
-        
+
         ctx.func.signature = module.make_signature();
         for (_, ty) in &sig_sem.params {
-            ctx.func.signature.params.push(AbiParam::new(ty_cl(*ty, module.target_config().pointer_type())));
+            ctx.func.signature.params.push(AbiParam::new(ty_cl(
+                *ty,
+                module.target_config().pointer_type(),
+            )));
         }
         if sig_sem.ret != Ty::Void {
-            ctx.func.signature.returns.push(AbiParam::new(ty_cl(sig_sem.ret, module.target_config().pointer_type())));
+            ctx.func.signature.returns.push(AbiParam::new(ty_cl(
+                sig_sem.ret,
+                module.target_config().pointer_type(),
+            )));
         }
 
         {
@@ -143,17 +184,20 @@ pub fn emit_module(prog: &Program, sem: &SemInfo) -> Result<Vec<u8>, EmitError> 
                 // If non-void function reaches end without return, it's UB or checked by sem.
                 // We can insert a trap or dummy return if needed, but sem checks should prevent this.
             }
-            
+
             builder.finalize();
         }
 
-        module.define_function(*fid, &mut ctx)
+        module
+            .define_function(*fid, &mut ctx)
             .map_err(|e| eerr(f.span, e.to_string()))?;
         module.clear_context(&mut ctx);
     }
 
     let product = module.finish();
-    Ok(product.emit().map_err(|e| eerr(Span{line:0,col:0}, e.to_string()))?)
+    Ok(product
+        .emit()
+        .map_err(|e| eerr(Span { line: 0, col: 0 }, e.to_string()))?)
 }
 
 struct CompilerCtx<'a, 'b> {
@@ -199,7 +243,9 @@ fn compile_stmt(stmt: &Stmt, ctx: &mut CompilerCtx) -> Result<(), EmitError> {
         }
         Stmt::Assign { name, expr, span } => {
             let (val, _) = compile_expr(expr, ctx)?;
-            let (var, _) = ctx.get_var(name).ok_or_else(|| eerr(*span, "unknown var"))?;
+            let (var, _) = ctx
+                .get_var(name)
+                .ok_or_else(|| eerr(*span, "unknown var"))?;
             ctx.builder.def_var(var, val);
         }
         Stmt::Expr { expr, .. } => {
@@ -213,23 +259,29 @@ fn compile_stmt(stmt: &Stmt, ctx: &mut CompilerCtx) -> Result<(), EmitError> {
                 ctx.builder.ins().return_(&[]);
             }
         }
-        Stmt::If { arms, else_body, .. } => {
+        Stmt::If {
+            arms, else_body, ..
+        } => {
             let exit_block = ctx.builder.create_block();
-            
+
             for (cond, body) in arms {
                 let body_block = ctx.builder.create_block();
                 let next_cond_block = ctx.builder.create_block();
 
                 let (c, _) = compile_expr(cond, ctx)?;
-                ctx.builder.ins().brif(c, body_block, &[], next_cond_block, &[]);
-                
+                ctx.builder
+                    .ins()
+                    .brif(c, body_block, &[], next_cond_block, &[]);
+
                 ctx.builder.switch_to_block(body_block);
                 ctx.builder.seal_block(body_block);
-                
+
                 ctx.vars.push(HashMap::new());
-                for s in body { compile_stmt(s, ctx)?; }
+                for s in body {
+                    compile_stmt(s, ctx)?;
+                }
                 ctx.vars.pop();
-                
+
                 if !ctx.builder.is_unreachable() {
                     ctx.builder.ins().jump(exit_block, &[]);
                 }
@@ -240,10 +292,12 @@ fn compile_stmt(stmt: &Stmt, ctx: &mut CompilerCtx) -> Result<(), EmitError> {
 
             if let Some(eb) = else_body {
                 ctx.vars.push(HashMap::new());
-                for s in eb { compile_stmt(s, ctx)?; }
+                for s in eb {
+                    compile_stmt(s, ctx)?;
+                }
                 ctx.vars.pop();
             }
-            
+
             if !ctx.builder.is_unreachable() {
                 ctx.builder.ins().jump(exit_block, &[]);
             }
@@ -258,7 +312,7 @@ fn compile_stmt(stmt: &Stmt, ctx: &mut CompilerCtx) -> Result<(), EmitError> {
 
             ctx.builder.ins().jump(header_block, &[]);
             ctx.builder.switch_to_block(header_block);
-            
+
             let (c, _) = compile_expr(cond, ctx)?;
             ctx.builder.ins().brif(c, body_block, &[], exit_block, &[]);
 
@@ -266,7 +320,9 @@ fn compile_stmt(stmt: &Stmt, ctx: &mut CompilerCtx) -> Result<(), EmitError> {
             // Loop body
             ctx.loops.push((exit_block, header_block));
             ctx.vars.push(HashMap::new());
-            for s in body { compile_stmt(s, ctx)?; }
+            for s in body {
+                compile_stmt(s, ctx)?;
+            }
             ctx.vars.pop();
             ctx.loops.pop();
 
@@ -280,11 +336,17 @@ fn compile_stmt(stmt: &Stmt, ctx: &mut CompilerCtx) -> Result<(), EmitError> {
             ctx.builder.seal_block(exit_block);
         }
         Stmt::Break { span } => {
-            let (brk, _) = ctx.loops.last().ok_or_else(|| eerr(*span, "break outside loop"))?;
+            let (brk, _) = ctx
+                .loops
+                .last()
+                .ok_or_else(|| eerr(*span, "break outside loop"))?;
             ctx.builder.ins().jump(*brk, &[]);
         }
         Stmt::Continue { span } => {
-            let (_, cnt) = ctx.loops.last().ok_or_else(|| eerr(*span, "continue outside loop"))?;
+            let (_, cnt) = ctx
+                .loops
+                .last()
+                .ok_or_else(|| eerr(*span, "continue outside loop"))?;
             ctx.builder.ins().jump(*cnt, &[]);
         }
     }
@@ -301,7 +363,9 @@ fn compile_expr(expr: &Expr, ctx: &mut CompilerCtx) -> Result<(Value, Ty), EmitE
             Ok((ptr, Ty::Text))
         }
         Expr::Ident(name, span) => {
-            let (var, ty) = ctx.get_var(name).ok_or_else(|| eerr(*span, "unknown var"))?;
+            let (var, ty) = ctx
+                .get_var(name)
+                .ok_or_else(|| eerr(*span, "unknown var"))?;
             Ok((ctx.builder.use_var(var), ty))
         }
         Expr::BuiltinPrint(_) => panic!("builtin print used as value"), // Should be handled in Call
@@ -347,7 +411,10 @@ fn compile_expr(expr: &Expr, ctx: &mut CompilerCtx) -> Result<(Value, Ty), EmitE
                     Ok((cmp, Ty::Bool))
                 }
                 BinOp::Ge => {
-                    let cmp = ctx.builder.ins().icmp(IntCC::SignedGreaterThanOrEqual, l, r);
+                    let cmp = ctx
+                        .builder
+                        .ins()
+                        .icmp(IntCC::SignedGreaterThanOrEqual, l, r);
                     Ok((cmp, Ty::Bool))
                 }
             }
@@ -360,7 +427,7 @@ fn compile_expr(expr: &Expr, ctx: &mut CompilerCtx) -> Result<(Value, Ty), EmitE
                     Arg::Pos(e) => compile_expr(e, ctx)?,
                     _ => unreachable!(),
                 };
-                
+
                 if ty == Ty::Int {
                     let fid = ctx.ext_fns.get("quad_echo_i64").unwrap();
                     let func_ref = ctx.module.declare_func_in_func(*fid, ctx.builder.func);
@@ -372,14 +439,17 @@ fn compile_expr(expr: &Expr, ctx: &mut CompilerCtx) -> Result<(Value, Ty), EmitE
                 }
                 Ok((ctx.builder.ins().iconst(types::I64, 0), Ty::Void)) // Void return dummy
             } else if let Expr::Ident(fname, _) = &**callee {
-                let fid = ctx.user_fns.get(fname).ok_or_else(|| eerr(*span, "unknown func"))?;
+                let fid = ctx
+                    .user_fns
+                    .get(fname)
+                    .ok_or_else(|| eerr(*span, "unknown func"))?;
                 let func_ref = ctx.module.declare_func_in_func(*fid, ctx.builder.func);
-                
+
                 let mut arg_vals = Vec::new();
                 // Handle named/pos args. Sem check ensures correctness.
                 // We need to map args to the order in signature.
                 let sig = ctx.sem.fns.get(fname).unwrap();
-                
+
                 // Simple case: all positional
                 if args.iter().all(|a| matches!(a, Arg::Pos(_))) {
                     for a in args {
@@ -440,7 +510,11 @@ fn mangle(name: &str) -> String {
     format!("quad_{name}")
 }
 
-fn collect_strings(prog: &Program, map: &mut HashMap<String, (String, String, usize)>, next: &mut usize) {
+fn collect_strings(
+    prog: &LinkedProgram,
+    map: &mut HashMap<String, (String, String, usize)>,
+    next: &mut usize,
+) {
     for f in &prog.funcs {
         for s in &f.body {
             collect_strings_stmt(s, map, next);
@@ -448,30 +522,50 @@ fn collect_strings(prog: &Program, map: &mut HashMap<String, (String, String, us
     }
 }
 
-fn collect_strings_stmt(stmt: &Stmt, map: &mut HashMap<String, (String, String, usize)>, next: &mut usize) {
+fn collect_strings_stmt(
+    stmt: &Stmt,
+    map: &mut HashMap<String, (String, String, usize)>,
+    next: &mut usize,
+) {
     match stmt {
         Stmt::VarDecl { init, .. } => collect_strings_expr(init, map, next),
         Stmt::Assign { expr, .. } => collect_strings_expr(expr, map, next),
         Stmt::Expr { expr, .. } => collect_strings_expr(expr, map, next),
-        Stmt::Back { expr, .. } => if let Some(e) = expr { collect_strings_expr(e, map, next) },
-        Stmt::If { arms, else_body, .. } => {
+        Stmt::Back { expr, .. } => {
+            if let Some(e) = expr {
+                collect_strings_expr(e, map, next)
+            }
+        }
+        Stmt::If {
+            arms, else_body, ..
+        } => {
             for (c, b) in arms {
                 collect_strings_expr(c, map, next);
-                for s in b { collect_strings_stmt(s, map, next); }
+                for s in b {
+                    collect_strings_stmt(s, map, next);
+                }
             }
             if let Some(b) = else_body {
-                for s in b { collect_strings_stmt(s, map, next); }
+                for s in b {
+                    collect_strings_stmt(s, map, next);
+                }
             }
         }
         Stmt::While { cond, body, .. } => {
             collect_strings_expr(cond, map, next);
-            for s in body { collect_strings_stmt(s, map, next); }
+            for s in body {
+                collect_strings_stmt(s, map, next);
+            }
         }
         _ => {}
     }
 }
 
-fn collect_strings_expr(expr: &Expr, map: &mut HashMap<String, (String, String, usize)>, next: &mut usize) {
+fn collect_strings_expr(
+    expr: &Expr,
+    map: &mut HashMap<String, (String, String, usize)>,
+    next: &mut usize,
+) {
     match expr {
         Expr::Str(s, _) => {
             if !map.contains_key(s) {

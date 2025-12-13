@@ -1,0 +1,165 @@
+use std::collections::HashSet;
+use std::path::{Path, PathBuf};
+
+use crate::ast::LinkedProgram;
+use crate::lex::{self, Language, Span};
+use crate::parse;
+
+#[derive(Debug)]
+pub enum LoadError {
+    Lex {
+        path: PathBuf,
+        err: lex::LexError,
+    },
+    Parse {
+        path: PathBuf,
+        err: parse::ParseError,
+    },
+    Io {
+        path: PathBuf,
+        span: Option<Span>,
+        err: std::io::Error,
+    },
+}
+
+impl std::fmt::Display for LoadError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            LoadError::Lex { path, err } => write!(f, "{}: lex error: {}", path.display(), err),
+            LoadError::Parse { path, err } => write!(f, "{}: parse error: {}", path.display(), err),
+            LoadError::Io { path, span, err } => match span {
+                Some(sp) => write!(
+                    f,
+                    "{}:{}:{}: io error: {}",
+                    path.display(),
+                    sp.line,
+                    sp.col,
+                    err
+                ),
+                None => write!(f, "{}: io error: {}", path.display(), err),
+            },
+        }
+    }
+}
+
+impl std::error::Error for LoadError {}
+
+pub fn load_program(lang: Language, entry: &Path) -> Result<LinkedProgram, LoadError> {
+    let mut funcs = Vec::new();
+    let mut visited = HashSet::<PathBuf>::new();
+    load_one(lang, entry, None, &mut visited, &mut funcs)?;
+    Ok(LinkedProgram { funcs })
+}
+
+fn load_one(
+    lang: Language,
+    path: &Path,
+    import_span: Option<Span>,
+    visited: &mut HashSet<PathBuf>,
+    funcs: &mut Vec<crate::ast::Func>,
+) -> Result<(), LoadError> {
+    let canonical = std::fs::canonicalize(path).map_err(|e| LoadError::Io {
+        path: path.to_path_buf(),
+        span: import_span,
+        err: e,
+    })?;
+
+    if !visited.insert(canonical.clone()) {
+        return Ok(());
+    }
+
+    let tokens = lex::lex_file(lang, &canonical).map_err(|err| LoadError::Lex {
+        path: canonical.clone(),
+        err,
+    })?;
+    let parsed = parse::parse_program(&tokens).map_err(|err| LoadError::Parse {
+        path: canonical.clone(),
+        err,
+    })?;
+
+    let base_dir = canonical
+        .parent()
+        .map(PathBuf::from)
+        .unwrap_or_else(|| PathBuf::from("."));
+
+    for import in parsed.imports {
+        let target = base_dir.join(import.path);
+        load_one(lang, &target, Some(import.span), visited, funcs)?;
+    }
+
+    funcs.extend(parsed.funcs);
+    Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::fs;
+
+    use tempfile::tempdir;
+
+    fn write_file(base: &Path, rel: &str, contents: &str) -> PathBuf {
+        let full = base.join(rel);
+        if let Some(parent) = full.parent() {
+            fs::create_dir_all(parent).unwrap();
+        }
+        fs::write(&full, contents).unwrap();
+        full
+    }
+
+    #[test]
+    fn loads_imported_modules_before_entry_functions() {
+        let dir = tempdir().unwrap();
+        let root = dir.path();
+
+        let lib = write_file(root, "lib.qd", "func helper() -> intg:\n    back 1\n");
+        let entry = write_file(
+            root,
+            "main.qd",
+            "from \"lib.qd\"\n\nfunc main() -> intg:\n    back helper()\n",
+        );
+
+        let program = load_program(Language::Quad, &entry).expect("program loads");
+        let names: Vec<_> = program.funcs.iter().map(|f| f.name.as_str()).collect();
+
+        assert!(lib.exists());
+        assert_eq!(names, ["helper", "main"]);
+    }
+
+    #[test]
+    fn resolves_nested_imports_relative_to_each_module() {
+        let dir = tempdir().unwrap();
+        let root = dir.path();
+
+        write_file(root, "pkg/util.qd", "func util() -> intg:\n    back 2\n");
+        write_file(
+            root,
+            "pkg/mod.qd",
+            "from \"util.qd\"\n\nfunc mid() -> intg:\n    back util()\n",
+        );
+        let entry = write_file(
+            root,
+            "main.qd",
+            "from \"pkg/mod.qd\"\n\nfunc main() -> intg:\n    back mid()\n",
+        );
+
+        let program = load_program(Language::Quad, &entry).expect("program loads");
+        let names: Vec<_> = program.funcs.iter().map(|f| f.name.as_str()).collect();
+
+        assert_eq!(names, ["util", "mid", "main"]);
+    }
+
+    #[test]
+    fn handles_cycles_without_duplicate_loading() {
+        let dir = tempdir().unwrap();
+        let root = dir.path();
+
+        let a = write_file(root, "a.tr", "use \"b.tr\"\n\ndef a() -> int:\n    ret 1\n");
+        write_file(root, "b.tr", "use \"a.tr\"\n\ndef b() -> int:\n    ret 2\n");
+
+        let program = load_program(Language::Tri, &a).expect("program loads");
+        let names: Vec<_> = program.funcs.iter().map(|f| f.name.as_str()).collect();
+
+        assert_eq!(names, ["b", "a"]);
+    }
+}

@@ -1,8 +1,9 @@
-mod lex;
 mod ast;
-mod parse;
-mod emit_cranelift;
 mod driver;
+mod emit_cranelift;
+mod lex;
+mod module_loader;
+mod parse;
 mod sem;
 
 #[path = "../lang/quad.rs"]
@@ -10,8 +11,9 @@ mod quad;
 #[path = "../lang/tri.rs"]
 mod tri;
 
-use std::path::PathBuf;
 use lex::Language;
+use module_loader::load_program;
+use std::path::PathBuf;
 
 fn print_usage() {
     eprintln!("usage:");
@@ -75,12 +77,16 @@ fn cmd_build(args: Vec<String>) {
         match args[i].as_str() {
             "--lang" => {
                 i += 1;
-                if i >= args.len() { die("--lang needs value"); }
+                if i >= args.len() {
+                    die("--lang needs value");
+                }
                 lang = parse_lang(&args[i]).unwrap_or_else(|| die("unknown lang"));
             }
             "-o" => {
                 i += 1;
-                if i >= args.len() { die("-o needs value"); }
+                if i >= args.len() {
+                    die("-o needs value");
+                }
                 out_exe = Some(PathBuf::from(&args[i]));
             }
             x if x.starts_with('-') => die(&format!("unknown option: {x}")),
@@ -92,11 +98,11 @@ fn cmd_build(args: Vec<String>) {
     let file = file.unwrap_or_else(|| die("missing <file>"));
     let out_exe = out_exe.unwrap_or_else(|| die("missing -o <out.exe>"));
 
-    let tokens = lex::lex_file(lang, &file).unwrap_or_else(|e| die(&format!("lex error: {e}")));
-    let prog = parse::parse_program(&tokens).unwrap_or_else(|e| die(&format!("parse error: {e}")));
+    let prog = load_program(lang, &file).unwrap_or_else(|e| die(&format!("{e}")));
     let sem_info = sem::check(&prog).unwrap_or_else(|e| die(&format!("sem error: {e}")));
 
-    driver::build_exe(&prog, &sem_info, &out_exe).unwrap_or_else(|e| die(&format!("link error: {e}")));
+    driver::build_exe(&prog, &sem_info, &out_exe)
+        .unwrap_or_else(|e| die(&format!("link error: {e}")));
     println!("built: {}", out_exe.display());
 }
 

@@ -1,0 +1,15 @@
+from "math.quad"
+from "greeter.quad"
+
+func main() -> intg:
+    greet("Quad modules")
+
+    vars sum: intg := add(2, 5)
+    echo("2 + 5 =")
+    echo(sum)
+
+    vars fact: intg := factorial(4)
+    echo("4! =")
+    echo(fact)
+
+    back 0

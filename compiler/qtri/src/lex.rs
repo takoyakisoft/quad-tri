@@ -50,7 +50,7 @@ pub enum TokKind {
     RBrack,
 
     // operators
-    Arrow, // ->
+    Arrow,  // ->
     Assign, // :=
     EqEq,
     Ne,
@@ -99,7 +99,10 @@ impl std::fmt::Display for LexError {
 impl std::error::Error for LexError {}
 
 fn err(line: usize, col: usize, msg: impl Into<String>) -> LexError {
-    LexError { span: Span { line, col }, msg: msg.into() }
+    LexError {
+        span: Span { line, col },
+        msg: msg.into(),
+    }
 }
 
 pub fn lex_file(lang: Language, path: &Path) -> Result<Vec<Token>, LexError> {
@@ -142,7 +145,13 @@ pub fn lex_str(lang: Language, src: &str) -> Result<Vec<Token>, LexError> {
         let rest = &line[idx..];
         let rest_trim = rest.trim_start();
         if rest_trim.is_empty() || rest_trim.starts_with('#') {
-            out.push(Token { kind: TokKind::Newline, span: Span { line: line_no, col: 1 } });
+            out.push(Token {
+                kind: TokKind::Newline,
+                span: Span {
+                    line: line_no,
+                    col: 1,
+                },
+            });
             continue;
         }
 
@@ -150,11 +159,23 @@ pub fn lex_str(lang: Language, src: &str) -> Result<Vec<Token>, LexError> {
         let cur = *indents.last().unwrap();
         if indent > cur {
             indents.push(indent);
-            out.push(Token { kind: TokKind::Indent, span: Span { line: line_no, col: 1 } });
+            out.push(Token {
+                kind: TokKind::Indent,
+                span: Span {
+                    line: line_no,
+                    col: 1,
+                },
+            });
         } else if indent < cur {
             while *indents.last().unwrap() > indent {
                 indents.pop();
-                out.push(Token { kind: TokKind::Dedent, span: Span { line: line_no, col: 1 } });
+                out.push(Token {
+                    kind: TokKind::Dedent,
+                    span: Span {
+                        line: line_no,
+                        col: 1,
+                    },
+                });
             }
             if *indents.last().unwrap() != indent {
                 return Err(err(line_no, 1, "indentation level mismatch"));
@@ -206,7 +227,10 @@ pub fn lex_str(lang: Language, src: &str) -> Result<Vec<Token>, LexError> {
                     s.push(c as char);
                     i += 1;
                 }
-                out.push(Token { kind: TokKind::Str(s), span: Span { line: line_no, col } });
+                out.push(Token {
+                    kind: TokKind::Str(s),
+                    span: Span { line: line_no, col },
+                });
                 continue;
             }
 
@@ -218,7 +242,10 @@ pub fn lex_str(lang: Language, src: &str) -> Result<Vec<Token>, LexError> {
                 }
                 let text = &line[start..i];
                 let v: i64 = text.parse().map_err(|_| err(line_no, col, "invalid int"))?;
-                out.push(Token { kind: TokKind::Int(v), span: Span { line: line_no, col } });
+                out.push(Token {
+                    kind: TokKind::Int(v),
+                    span: Span { line: line_no, col },
+                });
                 continue;
             }
 
@@ -236,15 +263,25 @@ pub fn lex_str(lang: Language, src: &str) -> Result<Vec<Token>, LexError> {
                 }
                 let text = &line[start..i];
                 if let Some(k) = kw_fn(text) {
-                    out.push(Token { kind: TokKind::Kw(k), span: Span { line: line_no, col } });
+                    out.push(Token {
+                        kind: TokKind::Kw(k),
+                        span: Span { line: line_no, col },
+                    });
                 } else {
-                    out.push(Token { kind: TokKind::Ident(text.to_string()), span: Span { line: line_no, col } });
+                    out.push(Token {
+                        kind: TokKind::Ident(text.to_string()),
+                        span: Span { line: line_no, col },
+                    });
                 }
                 continue;
             }
 
             // two-char operators
-            let two = if i + 1 < bytes.len() { &line[i..i + 2] } else { "" };
+            let two = if i + 1 < bytes.len() {
+                &line[i..i + 2]
+            } else {
+                ""
+            };
             if !two.is_empty() {
                 let kind = match two {
                     "->" => Some(TokKind::Arrow),
@@ -260,7 +297,10 @@ pub fn lex_str(lang: Language, src: &str) -> Result<Vec<Token>, LexError> {
                     _ => None,
                 };
                 if let Some(k) = kind {
-                    out.push(Token { kind: k, span: Span { line: line_no, col } });
+                    out.push(Token {
+                        kind: k,
+                        span: Span { line: line_no, col },
+                    });
                     i += 2;
                     continue;
                 }
@@ -292,30 +332,54 @@ pub fn lex_str(lang: Language, src: &str) -> Result<Vec<Token>, LexError> {
                 '|' => TokKind::Pipe,
                 _ => return Err(err(line_no, col, format!("unexpected char: {ch:?}"))),
             };
-            out.push(Token { kind, span: Span { line: line_no, col } });
+            out.push(Token {
+                kind,
+                span: Span { line: line_no, col },
+            });
             i += 1;
         }
 
-        out.push(Token { kind: TokKind::Newline, span: Span { line: line_no, col: bytes.len().max(1) } });
+        out.push(Token {
+            kind: TokKind::Newline,
+            span: Span {
+                line: line_no,
+                col: bytes.len().max(1),
+            },
+        });
     }
 
     // finalize: close open indents
     while indents.len() > 1 {
         indents.pop();
-        out.push(Token { kind: TokKind::Dedent, span: Span { line: total_lines, col: 1 } });
+        out.push(Token {
+            kind: TokKind::Dedent,
+            span: Span {
+                line: total_lines,
+                col: 1,
+            },
+        });
     }
-    out.push(Token { kind: TokKind::Eof, span: Span { line: total_lines, col: 1 } });
+    out.push(Token {
+        kind: TokKind::Eof,
+        span: Span {
+            line: total_lines,
+            col: 1,
+        },
+    });
 
     Ok(out)
 }
-
 
 #[cfg(test)]
 mod tests {
     use super::*;
 
     fn kinds(lang: Language, src: &str) -> Vec<TokKind> {
-        lex_str(lang, src).unwrap().into_iter().map(|t| t.kind).collect()
+        lex_str(lang, src)
+            .unwrap()
+            .into_iter()
+            .map(|t| t.kind)
+            .collect()
     }
 
     #[test]
@@ -333,18 +397,15 @@ mod tests {
             TokKind::Ident("intg".into()),
             TokKind::Colon,
             TokKind::Newline,
-
             TokKind::Indent,
             TokKind::Kw(Kw::Print),
             TokKind::LParen,
             TokKind::Int(123),
             TokKind::RParen,
             TokKind::Newline,
-
             TokKind::Kw(Kw::Back),
             TokKind::Int(0),
             TokKind::Newline,
-
             TokKind::Dedent,
             TokKind::Eof,
         ];
@@ -367,18 +428,15 @@ mod tests {
             TokKind::Ident("int".into()),
             TokKind::Colon,
             TokKind::Newline,
-
             TokKind::Indent,
             TokKind::Kw(Kw::Print),
             TokKind::LParen,
             TokKind::Int(123),
             TokKind::RParen,
             TokKind::Newline,
-
             TokKind::Kw(Kw::Back),
             TokKind::Int(0),
             TokKind::Newline,
-
             TokKind::Dedent,
             TokKind::Eof,
         ];

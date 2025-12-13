@@ -1,1 +1,14 @@
-/target
+**/target/
+
+*.exe
+*.pdb
+*.obj
+*.lib
+*.exp
+*.ilk
+*.dll
+
+*.o
+*.a
+*.so
+*.dylib

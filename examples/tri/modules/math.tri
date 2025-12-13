@@ -1,0 +1,10 @@
+def add(a: int, b: int) -> int:
+    ret a + b
+
+def factorial(n: int) -> int:
+    var res: int := 1
+    var k: int := n
+    for k > 1:
+        res := res * k
+        k := k - 1
+    ret res

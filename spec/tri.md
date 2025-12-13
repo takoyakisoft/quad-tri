@@ -27,3 +27,7 @@ int (i64), bol (i1), txt (ptr to C string), vod (void)
 
 ## Operator precedence
 (same as Quad)
+
+## Modules
+- `use "path/to/file.tri"` at the top level loads another Tri source file before the current one is type-checked.
+- Paths are resolved relative to the importing file.
