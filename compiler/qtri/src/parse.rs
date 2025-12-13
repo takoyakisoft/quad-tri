@@ -159,7 +159,11 @@ impl<'a> Parser<'a> {
     fn parse_import(&mut self) -> Result<Import, ParseError> {
         self.expect_kw(Kw::From)?;
         let (path, sp) = self.take_str()?;
-        self.expect(TokKind::Newline)?;
+        if self.peek().kind == TokKind::Newline {
+            self.next();
+        } else if !self.at_eof() {
+            return Err(perr(self.peek().span, "expected newline or EOF"));
+        }
         Ok(Import { path, span: sp })
     }
 
@@ -192,7 +196,11 @@ impl<'a> Parser<'a> {
         }
 
         self.expect(TokKind::RBrace)?;
-        self.expect(TokKind::Newline)?;
+        if self.peek().kind == TokKind::Newline {
+            self.next();
+        } else if !self.at_eof() {
+            return Err(perr(self.peek().span, "expected newline or EOF"));
+        }
 
         Ok(StructDef {
             name,

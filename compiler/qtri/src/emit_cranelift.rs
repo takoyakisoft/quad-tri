@@ -827,9 +827,9 @@ fn build_call_args(
         }
 
         let param_names: HashSet<_> = expected.iter().map(|(n, _)| n.clone()).collect();
-        for k in named_map.keys() {
+        for (k, (_, arg_span)) in &named_map {
             if !param_names.contains(k) {
-                return Err(eerr(span, format!("unknown parameter: {k}")));
+                return Err(eerr(*arg_span, format!("unknown parameter: {k}")));
             }
         }
         if named_map.len() != expected.len() {
