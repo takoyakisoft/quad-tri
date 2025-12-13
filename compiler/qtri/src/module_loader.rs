@@ -48,14 +48,7 @@ pub fn load_program(lang: Language, entry: &Path) -> Result<LinkedProgram, LoadE
     let mut structs = Vec::new();
     let mut funcs = Vec::new();
     let mut visited = HashSet::<PathBuf>::new();
-    load_one(
-        lang,
-        entry,
-        None,
-        &mut visited,
-        &mut structs,
-        &mut funcs,
-    )?;
+    load_one(lang, entry, None, &mut visited, &mut structs, &mut funcs)?;
     Ok(LinkedProgram { structs, funcs })
 }
 

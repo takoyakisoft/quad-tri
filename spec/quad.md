@@ -3,7 +3,7 @@
 ## Keywords (4 letters)
 from, type, func, lock, vars, when, elif, else, loop, back, echo, stop, next, over
 
-Stage1 で予約済みのキーワード（未実装のものを含む）: impl, make, self, list, push, size, enum,
+Stage1 reserved keywords (including unimplemented): impl, make, self, list, push, size, enum,
 case, open, read, save, shut, heap, free, okay, fail, trap
 
 ## Types

@@ -62,10 +62,7 @@ pub fn check(prog: &LinkedProgram) -> Result<SemInfo, SemError> {
 
     for s in &prog.structs {
         if structs.contains_key(&s.name) {
-            return Err(serr(
-                s.span,
-                format!("duplicate struct type: {}", s.name),
-            ));
+            return Err(serr(s.span, format!("duplicate struct type: {}", s.name)));
         }
 
         let mut fields = Vec::new();
@@ -99,8 +96,9 @@ pub fn check(prog: &LinkedProgram) -> Result<SemInfo, SemError> {
         }
         let ret = match &f.ret_ty {
             None => Ty::Void,
-            Some(s) => parse_ty(s, &structs)
-                .ok_or_else(|| serr(f.span, format!("unknown type: {s}")))?,
+            Some(s) => {
+                parse_ty(s, &structs).ok_or_else(|| serr(f.span, format!("unknown type: {s}")))?
+            }
         };
         let mut params = Vec::new();
         let mut seen = HashMap::<String, Span>::new();
@@ -126,7 +124,10 @@ pub fn check(prog: &LinkedProgram) -> Result<SemInfo, SemError> {
                     Some((_, other)) => {
                         return Err(serr(
                             f.span,
-                            format!("self must be of type {} (got {:?})", method.type_name, other),
+                            format!(
+                                "self must be of type {} (got {:?})",
+                                method.type_name, other
+                            ),
                         ))
                     }
                     None => {
@@ -182,7 +183,7 @@ pub fn check(prog: &LinkedProgram) -> Result<SemInfo, SemError> {
     })
 }
 
-fn parse_ty(s: &str, structs: &HashMap<String, StructInfo>) -> Option<Ty> {
+pub fn parse_ty(s: &str, structs: &HashMap<String, StructInfo>) -> Option<Ty> {
     Some(match s {
         "intg" | "int" => Ty::Int,
         "bool" | "bol" => Ty::Bool,
@@ -234,8 +235,15 @@ fn check_func(
     let mut saw_return = false;
 
     for st in &f.body {
-        saw_return |=
-            check_stmt(st, &sig.ret, fns, methods, structs, &mut scopes, &mut loop_depth)?;
+        saw_return |= check_stmt(
+            st,
+            &sig.ret,
+            fns,
+            methods,
+            structs,
+            &mut scopes,
+            &mut loop_depth,
+        )?;
     }
 
     // main must have explicit back <expr>
@@ -560,66 +568,6 @@ fn check_expr(
                 span: field_span,
             } = &**callee
             {
-                let validate_args = |expected: &[(String, Ty)]| -> Result<(), SemError> {
-                    if args.iter().all(|a| matches!(a, Arg::Pos(_))) {
-                        if args.len() != expected.len() {
-                            return Err(serr(
-                                *span,
-                                format!(
-                                    "arg count mismatch: expected {}, got {}",
-                                    expected.len(),
-                                    args.len()
-                                ),
-                            ));
-                        }
-                        for (i, a) in args.iter().enumerate() {
-                            let expr = match a {
-                                Arg::Pos(e) => e,
-                                Arg::Named { .. } => unreachable!(),
-                            };
-                            let xt = check_expr(expr, fns, methods, scopes, structs)?;
-                            if xt != expected[i].1 {
-                                return Err(serr(expr.span(), "arg type mismatch"));
-                            }
-                        }
-                        Ok(())
-                    } else {
-                        let mut named = HashMap::<String, (&Expr, Span)>::new();
-                        for a in args {
-                            match a {
-                                Arg::Named { name, expr, span } => {
-                                    if named.insert(name.clone(), (expr, *span)).is_some() {
-                                        return Err(serr(*span, "duplicate named arg"));
-                                    }
-                                }
-                                Arg::Pos(e) => {
-                                    return Err(serr(e.span(), "cannot mix named and positional args"))
-                                }
-                            }
-                        }
-                        if named.len() != expected.len() {
-                            return Err(serr(
-                                *span,
-                                format!(
-                                    "argument count mismatch for named call: expected {}, got {}",
-                                    expected.len(),
-                                    named.len()
-                                ),
-                            ));
-                        }
-                        for (pname, pty) in expected {
-                            let (expr, arg_sp) = named
-                                .get(pname)
-                                .ok_or_else(|| serr(*span, format!("missing parameter: {pname}")))?;
-                            let ety = check_expr(expr, fns, methods, scopes, structs)?;
-                            if ety != *pty {
-                                return Err(serr(*arg_sp, "arg type mismatch"));
-                            }
-                        }
-                        Ok(())
-                    }
-                };
-
                 if let Expr::Ident(type_name, _) = &**base {
                     let table = methods
                         .get(type_name)
@@ -633,7 +581,7 @@ fn check_expr(
                             "method expects self; call with value.method(...)",
                         ));
                     }
-                    validate_args(&sig.params)?;
+                    validate_args(args, &sig.params, *span, fns, methods, scopes, structs)?;
                     Ok(sig.ret.clone())
                 } else {
                     let recv_ty = check_expr(base, fns, methods, scopes, structs)?;
@@ -648,84 +596,98 @@ fn check_expr(
                         .get(field)
                         .ok_or_else(|| serr(*field_span, format!("unknown method: {field}")))?;
                     if !sig.has_self {
-                        return Err(serr(*field_span, "associated function cannot use value receiver"));
+                        return Err(serr(
+                            *field_span,
+                            "associated function cannot use value receiver",
+                        ));
                     }
-                    validate_args(&sig.params[1..])?;
+                    validate_args(args, &sig.params[1..], *span, fns, methods, scopes, structs)?;
                     Ok(sig.ret.clone())
                 }
             } else if let Expr::Ident(fname, sp) = &**callee {
                 let sig = fns
                     .get(fname)
                     .ok_or_else(|| serr(*sp, format!("unknown function: {fname}")))?;
-                // args: positional only for now (named is parsed but we validate “no mixing” already)
-                let mut pos = Vec::new();
-                let mut named = HashMap::<String, (&Expr, Span)>::new();
-                for a in args {
-                    match a {
-                        Arg::Pos(x) => pos.push(x),
-                        Arg::Named { name, expr, span } => {
-                            if named.insert(name.clone(), (expr, *span)).is_some() {
-                                return Err(serr(*span, "duplicate named arg"));
-                            }
-                        }
-                    }
-                }
-                if !named.is_empty() && !pos.is_empty() {
-                    return Err(serr(*span, "cannot mix named and positional args"));
-                }
-                if !named.is_empty() {
-                    // 1. Check for unknown parameter names.
-                    let param_names: std::collections::HashSet<_> =
-                        sig.params.iter().map(|p| &p.0).collect();
-                    for (name, (_, arg_span)) in &named {
-                        if !param_names.contains(name) {
-                            return Err(serr(*arg_span, format!("unknown parameter: '{}'", name)));
-                        }
-                    }
-
-                    // 2. Check that all parameters are provided.
-                    if named.len() != sig.params.len() {
-                        return Err(serr(
-                            *span,
-                            format!(
-                                "argument count mismatch for named call: expected {}, got {}",
-                                sig.params.len(),
-                                named.len()
-                            ),
-                        ));
-                    }
-
-                    // 3. Check types.
-                    for (pname, pty) in &sig.params {
-                        let (expr, arg_sp) = named.get(pname).unwrap(); // Safe due to checks above.
-                        let ety = check_expr(expr, fns, methods, scopes, structs)?;
-                        if ety != *pty {
-                            return Err(serr(*arg_sp, "arg type mismatch"));
-                        }
-                    }
-                    Ok(sig.ret.clone())
-                } else {
-                    if pos.len() != sig.params.len() {
-                        return Err(serr(
-                            *span,
-                            format!(
-                                "arg count mismatch: expected {}, got {}",
-                                sig.params.len(),
-                                pos.len()
-                            ),
-                        ));
-                    }
-                    for (i, x) in pos.iter().enumerate() {
-                        let xt = check_expr(x, fns, methods, scopes, structs)?;
-                        if xt != sig.params[i].1 {
-                            return Err(serr(x.span(), "arg type mismatch"));
-                        }
-                    }
-                    Ok(sig.ret.clone())
-                }
+                validate_args(args, &sig.params, *span, fns, methods, scopes, structs)?;
+                Ok(sig.ret.clone())
             } else {
                 Err(serr(*span, "invalid call target"))
             }
         }
+    }
+}
+
+fn validate_args(
+    args: &[Arg],
+    expected: &[(String, Ty)],
+    span: Span,
+    fns: &HashMap<String, FnSig>,
+    methods: &HashMap<String, HashMap<String, MethodSig>>,
+    scopes: &Vec<HashMap<String, VarInfo>>,
+    structs: &HashMap<String, StructInfo>,
+) -> Result<(), SemError> {
+    if args.iter().all(|a| matches!(a, Arg::Pos(_))) {
+        if args.len() != expected.len() {
+            return Err(serr(
+                span,
+                format!(
+                    "arg count mismatch: expected {}, got {}",
+                    expected.len(),
+                    args.len()
+                ),
+            ));
+        }
+        for (i, a) in args.iter().enumerate() {
+            let expr = match a {
+                Arg::Pos(e) => e,
+                Arg::Named { .. } => unreachable!(),
+            };
+            let xt = check_expr(expr, fns, methods, scopes, structs)?;
+            if xt != expected[i].1 {
+                return Err(serr(expr.span(), "arg type mismatch"));
+            }
+        }
+        Ok(())
+    } else {
+        let mut named = HashMap::<String, (&Expr, Span)>::new();
+        for a in args {
+            match a {
+                Arg::Named { name, expr, span } => {
+                    if named.insert(name.clone(), (expr, *span)).is_some() {
+                        return Err(serr(*span, "duplicate named arg"));
+                    }
+                }
+                Arg::Pos(e) => return Err(serr(e.span(), "cannot mix named and positional args")),
+            }
+        }
+
+        // Check for unknown parameter names
+        let param_names: std::collections::HashSet<_> = expected.iter().map(|p| &p.0).collect();
+        for (name, (_, arg_span)) in &named {
+            if !param_names.contains(name) {
+                return Err(serr(*arg_span, format!("unknown parameter: '{}'", name)));
+            }
+        }
+
+        if named.len() != expected.len() {
+            return Err(serr(
+                span,
+                format!(
+                    "argument count mismatch for named call: expected {}, got {}",
+                    expected.len(),
+                    named.len()
+                ),
+            ));
+        }
+        for (pname, pty) in expected {
+            let (expr, arg_sp) = named
+                .get(pname)
+                .ok_or_else(|| serr(span, format!("missing parameter: {pname}")))?;
+            let ety = check_expr(expr, fns, methods, scopes, structs)?;
+            if ety != *pty {
+                return Err(serr(*arg_sp, "arg type mismatch"));
+            }
+        }
+        Ok(())
     }
 }

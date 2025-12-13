@@ -291,28 +291,14 @@ impl<'a> Parser<'a> {
             }
 
             let (name, sp) = self.take_ident()?;
-            let is_self = out.is_empty() && (name == "self" || name == "slf");
-            if is_self {
-                let ty = impl_target
-                    .ok_or_else(|| perr(sp, "self is only allowed inside impl"))?
-                    .to_string();
-                let mut_ty = ty.clone();
-                out.push(Param {
-                    name,
-                    ty: mut_ty,
-                    mutable: true,
-                    span: sp,
-                });
-            } else {
-                self.expect(TokKind::Colon)?;
-                let (ty, _) = self.take_ident()?;
-                out.push(Param {
-                    name,
-                    ty,
-                    mutable: false,
-                    span: sp,
-                });
-            }
+            self.expect(TokKind::Colon)?;
+            let (ty, _) = self.take_ident()?;
+            out.push(Param {
+                name,
+                ty,
+                mutable: false,
+                span: sp,
+            });
 
             if self.peek().kind == TokKind::Comma {
                 self.next();
@@ -356,9 +342,10 @@ impl<'a> Parser<'a> {
             TokKind::Kw(Kw::Back) => self.parse_back(),
 
             // assignment starts with Ident then := (optionally via .field)
-            TokKind::Ident(_) if self.peek_n(1).kind == TokKind::Assign
-                || (self.peek_n(1).kind == TokKind::Dot
-                    && self.peek_n(3).kind == TokKind::Assign) =>
+            TokKind::Ident(_)
+                if (self.peek_n(1).kind == TokKind::Assign
+                    || (self.peek_n(1).kind == TokKind::Dot
+                        && self.peek_n(3).kind == TokKind::Assign)) =>
             {
                 self.parse_assign()
             }
@@ -402,10 +389,7 @@ impl<'a> Parser<'a> {
         let target = if self.peek().kind == TokKind::Dot {
             self.next();
             let (field, _) = self.take_ident()?;
-            AssignTarget::Field {
-                base: name,
-                field,
-            }
+            AssignTarget::Field { base: name, field }
         } else {
             AssignTarget::Name(name)
         };

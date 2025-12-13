@@ -18,7 +18,7 @@ pub fn keyword_of(s: &str) -> Option<Kw> {
         "cnt" => Kw::Next,
         "ovr" => Kw::Over,
 
-        // --- Stage1 補完 (データ構造・メモリ) ---
+        // --- Stage1 completion (data structures / memory) ---
         "imp" => Kw::Impl,
         "new" => Kw::Make,
         "slf" => Kw::Self_,
@@ -28,7 +28,7 @@ pub fn keyword_of(s: &str) -> Option<Kw> {
         "enm" => Kw::Enum,
         "cas" => Kw::Case,
 
-        // --- Stage1 補完 (I/O・エラー) ---
+        // --- Stage1 completion (I/O / errors) ---
         "opn" => Kw::Open,
         "red" => Kw::Read,
         "wrt" => Kw::Save,

@@ -8,6 +8,8 @@ Two indentation-based language prototypes.
 - Named args: `name: expr` (no mixing; duplicates are errors)
 - Rust-style operator precedence
 - Rust Stage0 compiler uses Cranelift backend
+- **New**: Struct methods (`impl`/`imp` blocks) with `self`/`slf` receiver
+- **New**: Module imports (`from`/`use`) with automatic `.quad`/`.tri` extension resolution
 
 ## Examples
 

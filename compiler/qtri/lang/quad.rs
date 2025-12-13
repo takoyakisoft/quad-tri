@@ -18,22 +18,22 @@ pub fn keyword_of(s: &str) -> Option<Kw> {
         "next" => Kw::Next,
         "over" => Kw::Over,
 
-        // --- Stage1 補完 (データ構造・メモリ) ---
+        // --- Stage1 completion (data structures / memory) ---
         "impl" => Kw::Impl,
-        "make" => Kw::Make, // 構造体生成
-        "self" => Kw::Self_, // メソッド
-        "list" => Kw::List, // 動的配列
+        "make" => Kw::Make,  // struct creation
+        "self" => Kw::Self_, // method receiver
+        "list" => Kw::List,  // dynamic array
         "push" => Kw::Push,
-        "size" => Kw::Size, // 配列長
-        "enum" => Kw::Enum, // 列挙型
-        "case" => Kw::Case, // パターンマッチ
+        "size" => Kw::Size, // array length
+        "enum" => Kw::Enum, // enum type
+        "case" => Kw::Case, // pattern match
 
-        // --- Stage1 補完 (I/O・エラー) ---
+        // --- Stage1 completion (I/O / errors) ---
         "open" => Kw::Open,
         "read" => Kw::Read,
-        "save" => Kw::Save, // writeは5文字なのでsave
-        "shut" => Kw::Shut, // closeは5文字なのでshut
-        "heap" => Kw::Heap, // メモリ確保
+        "save" => Kw::Save, // write is 5 letters so use save
+        "shut" => Kw::Shut, // close is 5 letters so use shut
+        "heap" => Kw::Heap, // memory allocation
         "free" => Kw::Free,
         "okay" => Kw::Okay, // Result::Ok
         "fail" => Kw::Fail, // Result::Err

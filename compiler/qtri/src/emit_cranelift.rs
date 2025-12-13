@@ -171,7 +171,13 @@ pub fn emit_module(prog: &LinkedProgram, sem: &SemInfo) -> Result<Vec<u8>, EmitE
                             ty_cl(ty.clone(), module.target_config().pointer_type()),
                         );
                         builder.def_var(var, val);
-                        vars.insert(name.clone(), VarBinding::Scalar { var, ty: ty.clone() });
+                        vars.insert(
+                            name.clone(),
+                            VarBinding::Scalar {
+                                var,
+                                ty: ty.clone(),
+                            },
+                        );
                     }
                 }
             }
@@ -289,21 +295,19 @@ fn compile_stmt(stmt: &Stmt, ctx: &mut CompilerCtx) -> Result<(), EmitError> {
     match stmt {
         Stmt::VarDecl { name, ty, init, .. } => {
             let init_val = compile_expr(init, ctx)?;
-            let sem_ty = parse_ty(ty, ctx.sem).unwrap();
+            let sem_ty = crate::sem::parse_ty(ty, &ctx.sem.structs).unwrap();
             match sem_ty {
                 Ty::Struct(ref sname) => {
-                    let layout = get_struct_layout(sname, ctx)?;
+                    let layout = get_struct_layout(sname, ctx, init.span())?;
                     let slot = match init_val {
                         ValueKind::StructPtr { slot: Some(s), .. } => s,
                         ValueKind::StructPtr { addr, .. } => {
                             let align_shift = layout.align.trailing_zeros() as u8;
-                            let new_slot = ctx
-                                .builder
-                                .create_sized_stack_slot(StackSlotData::new(
-                                    StackSlotKind::ExplicitSlot,
-                                    layout.size as u32,
-                                    align_shift,
-                                ));
+                            let new_slot = ctx.builder.create_sized_stack_slot(StackSlotData::new(
+                                StackSlotKind::ExplicitSlot,
+                                layout.size as u32,
+                                align_shift,
+                            ));
                             let dst = ctx.builder.ins().stack_addr(ctx.ptr_ty, new_slot, 0);
                             copy_struct(addr, dst, &layout, ctx)?;
                             new_slot
@@ -366,13 +370,15 @@ fn compile_stmt(stmt: &Stmt, ctx: &mut CompilerCtx) -> Result<(), EmitError> {
                                 }
                                 _ => return Err(eerr(*span, "type mismatch in assignment")),
                             };
-                            let layout = get_struct_layout(&sname, ctx)?;
+                            let layout = get_struct_layout(&sname, ctx, *span)?;
                             let dst_addr = ctx.builder.ins().stack_addr(ctx.ptr_ty, slot, 0);
                             copy_struct(src_addr, dst_addr, &layout, ctx)?;
                         }
                         VarBinding::StructRef { addr, name: sname } => {
                             let src_addr = match val {
-                                ValueKind::StructPtr { addr: a, ty_name, .. } => {
+                                ValueKind::StructPtr {
+                                    addr: a, ty_name, ..
+                                } => {
                                     if ty_name != sname {
                                         return Err(eerr(*span, "struct type mismatch"));
                                     }
@@ -380,7 +386,7 @@ fn compile_stmt(stmt: &Stmt, ctx: &mut CompilerCtx) -> Result<(), EmitError> {
                                 }
                                 _ => return Err(eerr(*span, "type mismatch in assignment")),
                             };
-                            let layout = get_struct_layout(&sname, ctx)?;
+                            let layout = get_struct_layout(&sname, ctx, *span)?;
                             copy_struct(src_addr, addr, &layout, ctx)?;
                         }
                     }
@@ -390,16 +396,15 @@ fn compile_stmt(stmt: &Stmt, ctx: &mut CompilerCtx) -> Result<(), EmitError> {
                         .get_var(base)
                         .ok_or_else(|| eerr(*span, "unknown var"))?;
                     let (sname, addr) = match binding {
-                        VarBinding::StructOwned { slot, name } => (
-                            name,
-                            ctx.builder.ins().stack_addr(ctx.ptr_ty, slot, 0),
-                        ),
+                        VarBinding::StructOwned { slot, name } => {
+                            (name, ctx.builder.ins().stack_addr(ctx.ptr_ty, slot, 0))
+                        }
                         VarBinding::StructRef { addr, name } => (name, addr),
                         VarBinding::Scalar { .. } => {
                             return Err(eerr(*span, "field assign on non-struct"))
                         }
                     };
-                    let layout = get_struct_layout(&sname, ctx)?;
+                    let layout = get_struct_layout(&sname, ctx, *span)?;
                     let fld = layout
                         .fields
                         .iter()
@@ -423,12 +428,11 @@ fn compile_stmt(stmt: &Stmt, ctx: &mut CompilerCtx) -> Result<(), EmitError> {
         }
         Stmt::Back { expr, .. } => {
             if let Some(e) = expr {
-                let (val, _) = match compile_expr(e, ctx)? {
-                    ValueKind::Scalar(v, ty) => (v, ty),
-                    ValueKind::StructPtr { .. } => {
-                        return Err(eerr(e.span(), "cannot return struct values"))
-                    }
+                let val = match compile_expr(e, ctx)? {
+                    ValueKind::Scalar(v, _) => v,
+                    ValueKind::StructPtr { addr, .. } => addr,
                 };
+
                 ctx.builder.ins().return_(&[val]);
             } else {
                 ctx.builder.ins().return_(&[]);
@@ -557,15 +561,13 @@ fn compile_expr(expr: &Expr, ctx: &mut CompilerCtx) -> Result<ValueKind, EmitErr
             None => Err(eerr(*span, "unknown var")),
         },
         Expr::StructLit { name, fields, span } => {
-            let layout = get_struct_layout(name, ctx)?;
+            let layout = get_struct_layout(name, ctx, *span)?;
             let align_shift = layout.align.trailing_zeros() as u8;
-            let slot = ctx
-                .builder
-                .create_sized_stack_slot(StackSlotData::new(
-                    StackSlotKind::ExplicitSlot,
-                    layout.size as u32,
-                    align_shift,
-                ));
+            let slot = ctx.builder.create_sized_stack_slot(StackSlotData::new(
+                StackSlotKind::ExplicitSlot,
+                layout.size as u32,
+                align_shift,
+            ));
             let base = ctx.builder.ins().stack_addr(ctx.ptr_ty, slot, 0);
             for fld in &layout.fields {
                 let (_, expr, fspan) = fields
@@ -589,22 +591,22 @@ fn compile_expr(expr: &Expr, ctx: &mut CompilerCtx) -> Result<ValueKind, EmitErr
                 slot: Some(slot),
             })
         }
-        Expr::Field { base, field, span } => {
-            match compile_expr(base, ctx)? {
-                ValueKind::StructPtr { addr, ty_name, .. } => {
-                    let layout = get_struct_layout(&ty_name, ctx)?;
-                    let fld = layout
-                        .fields
-                        .iter()
-                        .find(|f| f.name.as_str() == field.as_str())
-                        .ok_or_else(|| eerr(*span, "unknown field"))?;
-                    let val = load_field(addr, fld.offset, &fld.ty, ctx)?;
-                    Ok(ValueKind::Scalar(val, fld.ty.clone()))
-                }
-                ValueKind::Scalar(_, _) => Err(eerr(*span, "field access on non-struct")),
+        Expr::Field { base, field, span } => match compile_expr(base, ctx)? {
+            ValueKind::StructPtr { addr, ty_name, .. } => {
+                let layout = get_struct_layout(&ty_name, ctx, *span)?;
+                let fld = layout
+                    .fields
+                    .iter()
+                    .find(|f| f.name.as_str() == field.as_str())
+                    .ok_or_else(|| eerr(*span, "unknown field"))?;
+                let val = load_field(addr, fld.offset, &fld.ty, ctx)?;
+                Ok(ValueKind::Scalar(val, fld.ty.clone()))
             }
+            ValueKind::Scalar(_, _) => Err(eerr(*span, "field access on non-struct")),
+        },
+        Expr::BuiltinPrint(span) => {
+            return Err(eerr(*span, "builtin print cannot be used as a value"))
         }
-        Expr::BuiltinPrint(_) => panic!("builtin print used as value"),
         Expr::Unary { op, expr, span } => {
             let (val, ty) = expect_scalar(compile_expr(expr, ctx)?, *span)?;
             let v = match op {
@@ -629,17 +631,16 @@ fn compile_expr(expr: &Expr, ctx: &mut CompilerCtx) -> Result<ValueKind, EmitErr
                 BinOp::BitXor => (ctx.builder.ins().bxor(l, r), lty.clone()),
                 BinOp::Eq => (ctx.builder.ins().icmp(IntCC::Equal, l, r), Ty::Bool),
                 BinOp::Ne => (ctx.builder.ins().icmp(IntCC::NotEqual, l, r), Ty::Bool),
-                BinOp::Lt => (ctx.builder.ins().icmp(IntCC::SignedLessThan, l, r), Ty::Bool),
+                BinOp::Lt => (
+                    ctx.builder.ins().icmp(IntCC::SignedLessThan, l, r),
+                    Ty::Bool,
+                ),
                 BinOp::Le => (
-                    ctx.builder
-                        .ins()
-                        .icmp(IntCC::SignedLessThanOrEqual, l, r),
+                    ctx.builder.ins().icmp(IntCC::SignedLessThanOrEqual, l, r),
                     Ty::Bool,
                 ),
                 BinOp::Gt => (
-                    ctx.builder
-                        .ins()
-                        .icmp(IntCC::SignedGreaterThan, l, r),
+                    ctx.builder.ins().icmp(IntCC::SignedGreaterThan, l, r),
                     Ty::Bool,
                 ),
                 BinOp::Ge => (
@@ -821,9 +822,7 @@ fn build_call_args(
                         return Err(eerr(*span, "duplicate named arg"));
                     }
                 }
-                Arg::Pos(e) => {
-                    return Err(eerr(e.span(), "cannot mix named and positional args"))
-                }
+                Arg::Pos(e) => return Err(eerr(e.span(), "cannot mix named and positional args")),
             }
         }
 
@@ -863,9 +862,7 @@ fn build_call_args(
                         }
                         addr
                     }
-                    ValueKind::Scalar(_, _) => {
-                        return Err(eerr(*arg_sp, "expected struct arg"))
-                    }
+                    ValueKind::Scalar(_, _) => return Err(eerr(*arg_sp, "expected struct arg")),
                 };
                 arg_vals.push(ptr);
             }
@@ -899,22 +896,6 @@ fn ty_cl(t: Ty, ptr_ty: Type) -> Type {
     }
 }
 
-fn parse_ty(s: &str, sem: &SemInfo) -> Option<Ty> {
-    Some(match s {
-        "intg" | "int" => Ty::Int,
-        "bool" | "bol" => Ty::Bool,
-        "text" | "txt" => Ty::Text,
-        "void" | "vod" => Ty::Void,
-        other => {
-            if sem.structs.contains_key(other) {
-                Ty::Struct(other.to_string())
-            } else {
-                return None;
-            }
-        }
-    })
-}
-
 fn load_field(
     base: Value,
     offset: i32,
@@ -922,10 +903,7 @@ fn load_field(
     ctx: &mut CompilerCtx,
 ) -> Result<Value, EmitError> {
     let cl_ty = ty_cl(ty.clone(), ctx.ptr_ty);
-    Ok(ctx
-        .builder
-        .ins()
-        .load(cl_ty, MemFlags::new(), base, offset))
+    Ok(ctx.builder.ins().load(cl_ty, MemFlags::new(), base, offset))
 }
 
 fn store_field(
@@ -935,14 +913,17 @@ fn store_field(
     ty: &Ty,
     ctx: &mut CompilerCtx,
 ) -> Result<(), EmitError> {
-    ctx.builder
-        .ins()
-        .store(MemFlags::new(), val, base, offset);
+    ctx.builder.ins().store(MemFlags::new(), val, base, offset);
     let _ = ty;
     Ok(())
 }
 
-fn copy_struct(src: Value, dst: Value, layout: &StructLayout, ctx: &mut CompilerCtx) -> Result<(), EmitError> {
+fn copy_struct(
+    src: Value,
+    dst: Value,
+    layout: &StructLayout,
+    ctx: &mut CompilerCtx,
+) -> Result<(), EmitError> {
     for fld in &layout.fields {
         let v = load_field(src, fld.offset, &fld.ty, ctx)?;
         store_field(dst, fld.offset, v, &fld.ty, ctx)?;
@@ -950,7 +931,11 @@ fn copy_struct(src: Value, dst: Value, layout: &StructLayout, ctx: &mut Compiler
     Ok(())
 }
 
-fn get_struct_layout(name: &str, ctx: &mut CompilerCtx) -> Result<StructLayout, EmitError> {
+fn get_struct_layout(
+    name: &str,
+    ctx: &mut CompilerCtx,
+    span: Span,
+) -> Result<StructLayout, EmitError> {
     if let Some(l) = ctx.layouts.get(name) {
         return Ok(l.clone());
     }
@@ -958,12 +943,12 @@ fn get_struct_layout(name: &str, ctx: &mut CompilerCtx) -> Result<StructLayout, 
         .sem
         .structs
         .get(name)
-        .ok_or_else(|| eerr(Span { line: 0, col: 0 }, "unknown struct"))?;
+        .ok_or_else(|| eerr(span, "unknown struct"))?;
     let mut offset = 0i32;
     let mut align = 1i32;
     let mut fields = Vec::new();
     for (fname, fty) in &sinfo.fields {
-        let (sz, al) = ty_size_align(fty, ctx)?;
+        let (sz, al) = ty_size_align(fty, ctx, span)?;
         offset = align_up(offset, al);
         align = align.max(al);
         fields.push(FieldLayout {
@@ -974,18 +959,22 @@ fn get_struct_layout(name: &str, ctx: &mut CompilerCtx) -> Result<StructLayout, 
         offset += sz;
     }
     let size = align_up(offset, align);
-    let layout = StructLayout { size, align, fields };
+    let layout = StructLayout {
+        size,
+        align,
+        fields,
+    };
     ctx.layouts.insert(name.to_string(), layout.clone());
     Ok(layout)
 }
 
-fn ty_size_align(ty: &Ty, ctx: &mut CompilerCtx) -> Result<(i32, i32), EmitError> {
+fn ty_size_align(ty: &Ty, ctx: &mut CompilerCtx, span: Span) -> Result<(i32, i32), EmitError> {
     let ptr_bytes = ctx.module.target_config().pointer_bytes() as i32;
     Ok(match ty {
         Ty::Int => (8, 8),
         Ty::Bool => (1, 1),
         Ty::Text | Ty::Struct(_) => (ptr_bytes, ptr_bytes),
-        Ty::Void => return Err(eerr(Span { line: 0, col: 0 }, "void has no size")),
+        Ty::Void => return Err(eerr(span, "void has no size")),
     })
 }
 
@@ -994,7 +983,11 @@ fn align_up(n: i32, align: i32) -> i32 {
         return n;
     }
     let rem = n % align;
-    if rem == 0 { n } else { n + (align - rem) }
+    if rem == 0 {
+        n
+    } else {
+        n + (align - rem)
+    }
 }
 
 fn mangle(name: &str) -> String {

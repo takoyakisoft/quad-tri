@@ -31,7 +31,7 @@ pub struct Func {
     pub method: Option<MethodInfo>,
     pub name: String,
     pub params: Vec<Param>,
-    pub ret_ty: Option<String>, // None => void (ただし main は sem で必須にする)
+    pub ret_ty: Option<String>, // None => void (but main is required in sem)
     pub body: Vec<Stmt>,
     pub span: Span,
 }

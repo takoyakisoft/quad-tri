@@ -3,7 +3,7 @@
 ## Keywords (3 letters)
 use, typ, def, let, var, iff, elf, els, for, ret, prn, brk, cnt, ovr
 
-Stage1 で予約済みのキーワード（未実装のものを含む）: imp, new, slf, vec, psh, len, enm, cas, opn,
+Stage1 reserved keywords (including unimplemented): imp, new, slf, vec, psh, len, enm, cas, opn,
 red, wrt, cls, mem, del, yep, nop, die
 
 - use: import (Quad: from)
