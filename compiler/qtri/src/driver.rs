@@ -105,6 +105,6 @@ fn find_quadrt_lib() -> Result<(PathBuf, String), DriverError> {
     }
 
     Err(derr(
-        "quadrt staticlib not found. run: cargo build -p quadrt --release",
+        "qtrt staticlib not found. run: cargo build -p qtrt --release",
     ))
 }
