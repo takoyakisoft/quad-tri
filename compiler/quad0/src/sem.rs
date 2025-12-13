@@ -238,12 +238,12 @@ fn check_expr(e: &Expr, fns: &HashMap<String, FnSig>, scopes: &Vec<HashMap<Strin
                 let sig = fns.get(fname).ok_or_else(|| serr(*sp, format!("unknown function: {fname}")))?;
                 // args: positional only for now (named is parsed but we validate “no mixing” already)
                 let mut pos = Vec::new();
-                let mut named = HashMap::<String, Span>::new();
+                let mut named = HashMap::<String, (&Expr, Span)>::new();
                 for a in args {
                     match a {
                         Arg::Pos(x) => pos.push(x),
-                        Arg::Named{name, span, ..} => {
-                            if named.insert(name.clone(), *span).is_some() {
+                        Arg::Named{name, expr, span} => {
+                            if named.insert(name.clone(), (expr, *span)).is_some() {
                                 return Err(serr(*span, "duplicate named arg"));
                             }
                         }
@@ -253,17 +253,28 @@ fn check_expr(e: &Expr, fns: &HashMap<String, FnSig>, scopes: &Vec<HashMap<Strin
                     return Err(serr(*span, "cannot mix named and positional args"));
                 }
                 if !named.is_empty() {
-                    // いまは named args は sem で拒否（実装は次で入れられる）
-                    return Err(serr(*span, "named args are reserved (not implemented yet)"));
+                    if named.len() != sig.params.len() {
+                        return Err(serr(*span, "named call must provide all parameters"));
+                    }
+                    for (pname, pty) in &sig.params {
+                        let (expr, arg_sp) = named.get(pname)
+                            .ok_or_else(|| serr(*span, format!("unknown named arg: {pname}")))?;
+                        let ety = check_expr(expr, fns, scopes)?;
+                        if ety != *pty {
+                            return Err(serr(*arg_sp, "arg type mismatch"));
+                        }
+                    }
+                    Ok(sig.ret)
+                } else {
+                    if pos.len() != sig.params.len() {
+                        return Err(serr(*span, format!("arg count mismatch: expected {}, got {}", sig.params.len(), pos.len())));
+                    }
+                    for (i, x) in pos.iter().enumerate() {
+                        let xt = check_expr(x, fns, scopes)?;
+                        if xt != sig.params[i].1 { return Err(serr(x.span(), "arg type mismatch")); }
+                    }
+                    Ok(sig.ret)
                 }
-                if pos.len() != sig.params.len() {
-                    return Err(serr(*span, format!("arg count mismatch: expected {}, got {}", sig.params.len(), pos.len())));
-                }
-                for (i, x) in pos.iter().enumerate() {
-                    let xt = check_expr(x, fns, scopes)?;
-                    if xt != sig.params[i].1 { return Err(serr(x.span(), "arg type mismatch")); }
-                }
-                Ok(sig.ret)
             } else {
                 Err(serr(*span, "invalid call target"))
             }

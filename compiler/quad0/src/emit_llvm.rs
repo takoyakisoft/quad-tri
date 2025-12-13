@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 use crate::ast::*;
 use crate::lex::Span;
-use crate::sem::{SemInfo, Ty};
+use crate::sem::{FnSig, SemInfo, Ty};
 
 #[derive(Debug)]
 pub struct EmitError { pub span: Span, pub msg: String }
@@ -35,7 +35,7 @@ pub fn emit_module(prog: &Program, sem: &SemInfo) -> Result<String, EmitError> {
     // function defs
     for f in &prog.funcs {
         let sig = sem.fns.get(&f.name).ok_or_else(|| eerr(f.span, "missing sem sig"))?;
-        emit_func(&mut out, f, sig, &str_map)?;
+        emit_func(&mut out, f, sig, &str_map, sem)?;
         out.push('\n');
     }
 
@@ -66,6 +66,7 @@ struct FnCtx<'a> {
     loops: Vec<(String,String)>, // (break_lbl, continue_lbl)
     str_map: &'a HashMap<String, (String, String, usize)>,
     ret: Ty,
+    fns: &'a HashMap<String, FnSig>,
 }
 
 fn emit_func(
@@ -73,6 +74,7 @@ fn emit_func(
     f: &Func,
     sig: &crate::sem::FnSig,
     str_map: &HashMap<String, (String, String, usize)>,
+    sem: &SemInfo,
 ) -> Result<(), EmitError> {
     let fname = mangle(&f.name);
     let params_ir = sig.params.iter()
@@ -90,6 +92,7 @@ fn emit_func(
         loops: vec![],
         str_map,
         ret: sig.ret,
+        fns: &sem.fns,
     };
     // ↑ semはここでは未使用（簡略のため）。必要なら後で整理。
 
@@ -410,25 +413,56 @@ impl<'a> FnCtx<'a> {
                         _ => Err(eerr(*span, "echo named args not supported")),
                     }
                 } else if let Expr::Ident(fname, sp) = &**callee {
-                    // only positional for now (named is sem-error already)
-                    let callee_ir = mangle(fname);
-                    // NOTE: ret type is not directly available here without sem map; MVP assumes user calls return int/void later
-                    // For now we emit as void call if we can’t know: require return void/int by convention later.
-                    // ⇒ MVP: treat unknown as void (sem should ensure known).
-                    let mut arg_ir = Vec::new();
+                    let sig = self.fns.get(fname).ok_or_else(|| eerr(*sp, format!("unknown function: {fname}")))?;
+
+                    let mut pos = Vec::new();
+                    let mut named = HashMap::<String, (&Expr, Span)>::new();
                     for a in args {
                         match a {
-                            Arg::Pos(x) => {
-                                let (t, v) = self.emit_expr(x)?;
-                                arg_ir.push(format!("{} {v}", ty_llvm(t)));
+                            Arg::Pos(x) => pos.push(x),
+                            Arg::Named { name, expr, span } => {
+                                if named.insert(name.clone(), (expr, *span)).is_some() {
+                                    return Err(eerr(*span, "duplicate named arg"));
+                                }
                             }
-                            _ => return Err(eerr(*span, "named args not supported")),
                         }
                     }
-                    // We don't have ret type here; easiest: call as i64 and ignore if user intended void is still ok if function truly returns i64.
-                    // まずは “void関数呼び出し” のみ許可にしておく（安全）。
-                    // なので今はここをエラーにして、次の段階で sem を emit に渡して正しく call を出す。
-                    return Err(eerr(*sp, "user function calls reserved: enable after wiring SemInfo into emit"));
+                    if !pos.is_empty() && !named.is_empty() {
+                        return Err(eerr(*span, "cannot mix named and positional args"));
+                    }
+
+                    let mut arg_ir = Vec::new();
+                    if !named.is_empty() {
+                        if named.len() != sig.params.len() {
+                            return Err(eerr(*span, "named call must provide all parameters"));
+                        }
+                        for (pname, pty) in &sig.params {
+                            let (expr, arg_sp) = named.get(pname)
+                                .ok_or_else(|| eerr(*span, format!("unknown named arg: {pname}")))?;
+                            let (t, v) = self.emit_expr(expr)?;
+                            if t != *pty { return Err(eerr(*arg_sp, "arg type mismatch")); }
+                            arg_ir.push(format!("{} {v}", ty_llvm(t)));
+                        }
+                    } else {
+                        if pos.len() != sig.params.len() {
+                            return Err(eerr(*span, format!("arg count mismatch: expected {}, got {}", sig.params.len(), pos.len())));
+                        }
+                        for (i, x) in pos.iter().enumerate() {
+                            let (t, v) = self.emit_expr(x)?;
+                            if t != sig.params[i].1 { return Err(eerr(x.span(), "arg type mismatch")); }
+                            arg_ir.push(format!("{} {v}", ty_llvm(t)));
+                        }
+                    }
+
+                    let callee_ir = mangle(fname);
+                    if sig.ret == Ty::Void {
+                        self.out.push_str(&format!("  call void @{callee_ir}({})\n", arg_ir.join(", ")));
+                        Ok((Ty::Void, "0".into()))
+                    } else {
+                        let dst = self.new_tmp("call");
+                        self.out.push_str(&format!("  {dst} = call {} @{callee_ir}({})\n", ty_llvm(sig.ret), arg_ir.join(", ")));
+                        Ok((sig.ret, dst))
+                    }
                 } else {
                     Err(eerr(*span, "invalid call target"))
                 }

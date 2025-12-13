@@ -336,7 +336,9 @@ mod tests {
 
             TokKind::Indent,
             TokKind::Kw(Kw::Echo),
+            TokKind::LParen,
             TokKind::Int(123),
+            TokKind::RParen,
             TokKind::Newline,
 
             TokKind::Kw(Kw::Back),
@@ -368,7 +370,9 @@ mod tests {
 
             TokKind::Indent,
             TokKind::Kw(Kw::Echo),
+            TokKind::LParen,
             TokKind::Int(123),
+            TokKind::RParen,
             TokKind::Newline,
 
             TokKind::Kw(Kw::Back),
