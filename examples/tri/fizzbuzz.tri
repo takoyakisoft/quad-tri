@@ -1,0 +1,13 @@
+def main() -> int:
+    var i: int := 1
+    for i <= 100:
+        iff i % 15 == 0:
+            prn("FizzBuzz")
+        elf i % 3 == 0:
+            prn("Fizz")
+        elf i % 5 == 0:
+            prn("Buzz")
+        els:
+            prn(i)
+        i := i + 1
+    ret 0

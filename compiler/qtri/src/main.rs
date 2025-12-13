@@ -1,7 +1,7 @@
 mod lex;
 mod ast;
 mod parse;
-mod emit_llvm;
+mod emit_cranelift;
 mod driver;
 mod sem;
 
@@ -69,7 +69,6 @@ fn cmd_build(args: Vec<String>) {
     let mut lang = Language::Quad;
     let mut file: Option<PathBuf> = None;
     let mut out_exe: Option<PathBuf> = None;
-    let mut emit_ll: Option<PathBuf> = None;
 
     let mut i = 0;
     while i < args.len() {
@@ -84,11 +83,6 @@ fn cmd_build(args: Vec<String>) {
                 if i >= args.len() { die("-o needs value"); }
                 out_exe = Some(PathBuf::from(&args[i]));
             }
-            "--emit-llvm" => {
-                i += 1;
-                if i >= args.len() { die("--emit-llvm needs value"); }
-                emit_ll = Some(PathBuf::from(&args[i]));
-            }
             x if x.starts_with('-') => die(&format!("unknown option: {x}")),
             x => file = Some(PathBuf::from(x)),
         }
@@ -101,18 +95,8 @@ fn cmd_build(args: Vec<String>) {
     let tokens = lex::lex_file(lang, &file).unwrap_or_else(|e| die(&format!("lex error: {e}")));
     let prog = parse::parse_program(&tokens).unwrap_or_else(|e| die(&format!("parse error: {e}")));
     let sem_info = sem::check(&prog).unwrap_or_else(|e| die(&format!("sem error: {e}")));
-    let ll = emit_llvm::emit_module(&prog, &sem_info).unwrap_or_else(|e| die(&format!("emit error: {e}")));
 
-    let ll_path = if let Some(p) = emit_ll {
-        std::fs::write(&p, ll).unwrap_or_else(|e| die(&format!("write ll: {e}")));
-        p
-    } else {
-        let p = std::env::temp_dir().join("quad0_out.ll");
-        std::fs::write(&p, ll).unwrap_or_else(|e| die(&format!("write ll: {e}")));
-        p
-    };
-
-    driver::build_exe(&ll_path, &out_exe).unwrap_or_else(|e| die(&format!("link error: {e}")));
+    driver::build_exe(&prog, &sem_info, &out_exe).unwrap_or_else(|e| die(&format!("link error: {e}")));
     println!("built: {}", out_exe.display());
 }
 

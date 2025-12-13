@@ -1,0 +1,9 @@
+func add(a: intg, b: intg) -> intg:
+    back a + b
+
+func main() -> intg:
+    vars total: intg := add(1, 2)
+    echo(total)
+    vars swapped: intg := add(b: 5, a: 4)
+    echo(swapped)
+    back 0

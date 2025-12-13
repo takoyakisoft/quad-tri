@@ -7,20 +7,20 @@ Two indentation-based language prototypes.
 - Assignment: `:=` (statement-only)
 - Named args: `name: expr` (no mixing; duplicates are errors)
 - Rust-style operator precedence
-- Rust Stage0 compiler emits LLVM IR
+- Rust Stage0 compiler uses Cranelift backend
 
 ## Build
-Requires: Rust + LLVM tools (`llc`)
+Requires: Rust
 
 ```bash
 cd compiler
-cargo build -p quadrt --release
-cargo build -p quad0 --release
+cargo build -p qtrt --release
+cargo build -p qtri --release
 ```
 
 ## Run (for now)
 
 ```bash
 cd compiler
-cargo run -p quad0
+cargo run -p qtri
 ```

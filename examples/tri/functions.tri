@@ -1,0 +1,9 @@
+def add(a: int, b: int) -> int:
+    ret a + b
+
+def main() -> int:
+    var total: int := add(1, 2)
+    prn(total)
+    var swapped: int := add(b: 5, a: 4)
+    prn(swapped)
+    ret 0
