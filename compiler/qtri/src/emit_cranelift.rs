@@ -295,7 +295,7 @@ fn compile_stmt(stmt: &Stmt, ctx: &mut CompilerCtx) -> Result<(), EmitError> {
     match stmt {
         Stmt::VarDecl { name, ty, init, .. } => {
             let init_val = compile_expr(init, ctx)?;
-            let sem_ty = crate::sem::parse_ty(ty, &ctx.sem.structs).unwrap();
+            let sem_ty = crate::sem::parse_ty(ty, &ctx.sem.structs, &ctx.sem.enums).unwrap();
             match sem_ty {
                 Ty::Struct(ref sname) => {
                     let layout = get_struct_layout(sname, ctx, init.span())?;
@@ -421,6 +421,9 @@ fn compile_stmt(stmt: &Stmt, ctx: &mut CompilerCtx) -> Result<(), EmitError> {
                     }
                     store_field(addr, fld.offset, v, &fld.ty, ctx)?;
                 }
+                AssignTarget::Index { .. } => {
+                    return Err(eerr(*span, "index assignment is not supported yet"))
+                }
             }
         }
         Stmt::Expr { expr, .. } => {
@@ -484,6 +487,9 @@ fn compile_stmt(stmt: &Stmt, ctx: &mut CompilerCtx) -> Result<(), EmitError> {
             ctx.builder.switch_to_block(exit_block);
             ctx.builder.seal_block(exit_block);
         }
+        Stmt::Case { span, .. } => {
+            return Err(eerr(*span, "case is not supported in codegen yet"));
+        }
         Stmt::While { cond, body, .. } => {
             let header_block = ctx.builder.create_block();
             let body_block = ctx.builder.create_block();
@@ -522,11 +528,11 @@ fn compile_stmt(stmt: &Stmt, ctx: &mut CompilerCtx) -> Result<(), EmitError> {
             ctx.builder.ins().jump(*brk, &[]);
         }
         Stmt::Continue { span } => {
-            let (_, cnt) = ctx
+            let (_, nxt) = ctx
                 .loops
                 .last()
                 .ok_or_else(|| eerr(*span, "continue outside loop"))?;
-            ctx.builder.ins().jump(*cnt, &[]);
+            ctx.builder.ins().jump(*nxt, &[]);
         }
     }
     Ok(())
@@ -544,6 +550,7 @@ fn compile_expr(expr: &Expr, ctx: &mut CompilerCtx) -> Result<ValueKind, EmitErr
             let ptr = ctx.builder.ins().global_value(ctx.ptr_ty, global_val);
             Ok(ValueKind::Scalar(ptr, Ty::Text))
         }
+        Expr::ArrayLit { span, .. } => Err(eerr(*span, "array literals are not supported yet")),
         Expr::Ident(name, span) => match ctx.get_var(name) {
             Some(VarBinding::Scalar { var, ty }) => {
                 Ok(ValueKind::Scalar(ctx.builder.use_var(var), ty))
@@ -604,6 +611,7 @@ fn compile_expr(expr: &Expr, ctx: &mut CompilerCtx) -> Result<ValueKind, EmitErr
             }
             ValueKind::Scalar(_, _) => Err(eerr(*span, "field access on non-struct")),
         },
+        Expr::Index { span, .. } => Err(eerr(*span, "indexing is not supported yet")),
         Expr::BuiltinPrint(span) => {
             return Err(eerr(*span, "builtin print cannot be used as a value"))
         }
@@ -891,7 +899,9 @@ fn ty_cl(t: Ty, ptr_ty: Type) -> Type {
         Ty::Int => types::I64,
         Ty::Bool => types::I8,
         Ty::Text => ptr_ty,
+        Ty::Enum(_) => ptr_ty,
         Ty::Struct(_) => ptr_ty,
+        Ty::Array { .. } => ptr_ty,
         Ty::Void => types::I64, // Should not happen in params/ret usually, handled separately
     }
 }
@@ -973,7 +983,8 @@ fn ty_size_align(ty: &Ty, ctx: &mut CompilerCtx, span: Span) -> Result<(i32, i32
     Ok(match ty {
         Ty::Int => (8, 8),
         Ty::Bool => (1, 1),
-        Ty::Text | Ty::Struct(_) => (ptr_bytes, ptr_bytes),
+        Ty::Text | Ty::Struct(_) | Ty::Enum(_) => (ptr_bytes, ptr_bytes),
+        Ty::Array { .. } => (ptr_bytes, ptr_bytes),
         Ty::Void => return Err(eerr(span, "void has no size")),
     })
 }
@@ -1063,6 +1074,10 @@ fn collect_strings_expr(
             }
         }
         Expr::Unary { expr, .. } => collect_strings_expr(expr, map, next),
+        Expr::Index { base, index, .. } => {
+            collect_strings_expr(base, map, next);
+            collect_strings_expr(index, map, next);
+        }
         Expr::Field { base, .. } => collect_strings_expr(base, map, next),
         Expr::StructLit { fields, .. } => {
             for (_, e, _) in fields {

@@ -1,5 +1,5 @@
 func main() -> intg:
-    vars i: intg := 1
+    cell i: intg := 1
     loop i <= 100:
         when i % 15 == 0:
             echo("FizzBuzz")

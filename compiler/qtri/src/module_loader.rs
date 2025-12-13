@@ -45,11 +45,24 @@ impl std::fmt::Display for LoadError {
 impl std::error::Error for LoadError {}
 
 pub fn load_program(lang: Language, entry: &Path) -> Result<LinkedProgram, LoadError> {
+    let mut enums = Vec::new();
     let mut structs = Vec::new();
     let mut funcs = Vec::new();
     let mut visited = HashSet::<PathBuf>::new();
-    load_one(lang, entry, None, &mut visited, &mut structs, &mut funcs)?;
-    Ok(LinkedProgram { structs, funcs })
+    load_one(
+        lang,
+        entry,
+        None,
+        &mut visited,
+        &mut enums,
+        &mut structs,
+        &mut funcs,
+    )?;
+    Ok(LinkedProgram {
+        enums,
+        structs,
+        funcs,
+    })
 }
 
 fn append_default_extension(lang: Language, path: &Path) -> PathBuf {
@@ -72,6 +85,7 @@ fn load_one(
     path: &Path,
     import_span: Option<Span>,
     visited: &mut HashSet<PathBuf>,
+    enums: &mut Vec<crate::ast::EnumDef>,
     structs: &mut Vec<crate::ast::StructDef>,
     funcs: &mut Vec<crate::ast::Func>,
 ) -> Result<(), LoadError> {
@@ -102,9 +116,18 @@ fn load_one(
     for import in parsed.imports {
         let target = base_dir.join(&import.path);
         let target = append_default_extension(lang, &target);
-        load_one(lang, &target, Some(import.span), visited, structs, funcs)?;
+        load_one(
+            lang,
+            &target,
+            Some(import.span),
+            visited,
+            enums,
+            structs,
+            funcs,
+        )?;
     }
 
+    enums.extend(parsed.enums);
     structs.extend(parsed.structs);
     funcs.extend(parsed.funcs);
     Ok(())

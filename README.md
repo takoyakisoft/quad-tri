@@ -10,23 +10,35 @@ Two indentation-based language prototypes.
 - Rust Stage0 compiler uses Cranelift backend
 - **New**: Struct methods (`impl`/`imp` blocks) with `self`/`slf` receiver
 - **New**: Module imports (`from`/`use`) with automatic `.quad`/`.tri` extension resolution
+- **New**: Enums with variant patterns via `case`/`cas` and `Enum::Variant` matching
+- Fixed-length arrays with `[len]type` syntax, array literals, and nested indexing
+
+| Concept | Quad (4 letters) | Tri (3 letters) | Meaning |
+| --- | --- | --- | --- |
+| Public visibility | publ | pub | Public |
+| Private visibility | priv | prv | Private |
+| Immutable binding | bind | let | Immutable local variable |
+| Mutable binding | cell | var | Mutable local variable |
+| Continue | next | nxt | Loop continue |
+| Character | char | chr | char / Unicode scalar value (u32) |
+| Byte | byte | byt | u8 / unsigned char |
 
 ## Examples
 
 Quad uses four-letter keywords and `from` imports. A minimal module-based program (see `examples/quad/modules`):
 
-```quad
+```gdscript
 from "math"
 from "greeter"
 
 func main() -> intg:
     greet("Quad modules")
 
-    vars sum: intg := add(2, 5)
+    cell sum: intg := add(2, 5)
     echo("2 + 5 =")
     echo(sum)
 
-    vars fact: intg := factorial(4)
+    cell fact: intg := factorial(4)
     echo("4! =")
     echo(fact)
 
@@ -35,7 +47,7 @@ func main() -> intg:
 
 Tri mirrors the same program with three-letter keywords and `use` imports (see `examples/tri/modules`):
 
-```tri
+```python
 use "math"
 use "greeter"
 
@@ -51,6 +63,48 @@ def main() -> int:
     prn(fact)
 
     ret 0
+```
+
+Enums and pattern matching are available with `enum`/`enm` declarations and `case`/`cas` blocks:
+
+```gdscript
+enum Event:
+    Quit
+    Click(intg, intg)
+    Key(text)
+
+func handle(e: Event) -> void:
+    case e:
+        when Event::Quit:
+            echo("Bye")
+
+        when Event::Click(x, y):
+            echo("Clicked at:")
+            echo(x)
+
+        when Event::Key(k):
+            echo("Key pressed:")
+            echo(k)
+```
+
+```python
+enm Evt:
+    Qit
+    Clk(int, int)
+    Key(txt)
+
+def hnd(e: Evt) -> vod:
+    cas e:
+        iff Evt::Qit:
+            prn("Bye")
+
+        iff Evt::Clk(x, y):
+            prn("Clk")
+            prn(x)
+
+        iff Evt::Key(k):
+            prn("Key")
+            prn(k)
 ```
 
 ## Build

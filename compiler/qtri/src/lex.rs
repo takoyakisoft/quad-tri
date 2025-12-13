@@ -14,9 +14,10 @@ pub enum Kw {
     Impl,
     Make,
     Self_,
+    Public,
+    Private,
     List,
     Push,
-    Size,
     Enum,
     Case,
     Lock,
@@ -59,6 +60,7 @@ pub enum TokKind {
 
     // punctuation
     Colon,
+    ColonColon,
     Comma,
     Dot,
     LBrace,
@@ -305,6 +307,7 @@ pub fn lex_str(lang: Language, src: &str) -> Result<Vec<Token>, LexError> {
                 let kind = match two {
                     "->" => Some(TokKind::Arrow),
                     ":=" => Some(TokKind::Assign),
+                    "::" => Some(TokKind::ColonColon),
                     "==" => Some(TokKind::EqEq),
                     "!=" => Some(TokKind::Ne),
                     "<=" => Some(TokKind::Le),

@@ -2,8 +2,8 @@ func add(a: intg, b: intg) -> intg:
     back a + b
 
 func factorial(n: intg) -> intg:
-    vars res: intg := 1
-    vars k: intg := n
+    cell res: intg := 1
+    cell k: intg := n
     loop k > 1:
         res := res * k
         k := k - 1

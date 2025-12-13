@@ -2,12 +2,14 @@ use crate::lex::Kw;
 
 pub fn keyword_of(s: &str) -> Option<Kw> {
     Some(match s {
-        // --- 既存 ---
+        // Core keywords
         "from" => Kw::From,
         "type" => Kw::Type,
         "func" => Kw::Func,
-        "lock" => Kw::Lock,
-        "vars" => Kw::Vars,
+        "bind" => Kw::Lock,
+        "cell" => Kw::Vars,
+        "publ" => Kw::Public,
+        "priv" => Kw::Private,
         "when" => Kw::When,
         "elif" => Kw::Elif,
         "else" => Kw::Else,
@@ -18,17 +20,16 @@ pub fn keyword_of(s: &str) -> Option<Kw> {
         "next" => Kw::Next,
         "over" => Kw::Over,
 
-        // --- Stage1 completion (data structures / memory) ---
+        // Stage1 completion (data structures / memory)
         "impl" => Kw::Impl,
         "make" => Kw::Make,  // struct creation
         "self" => Kw::Self_, // method receiver
         "list" => Kw::List,  // dynamic array
         "push" => Kw::Push,
-        "size" => Kw::Size, // array length
         "enum" => Kw::Enum, // enum type
         "case" => Kw::Case, // pattern match
 
-        // --- Stage1 completion (I/O / errors) ---
+        // Stage1 completion (I/O / errors)
         "open" => Kw::Open,
         "read" => Kw::Read,
         "save" => Kw::Save, // write is 5 letters so use save

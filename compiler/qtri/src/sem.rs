@@ -9,6 +9,8 @@ pub enum Ty {
     Text,
     Void,
     Struct(String),
+    Enum(String),
+    Array { len: usize, elem: Box<Ty> },
 }
 
 #[derive(Debug)]
@@ -30,10 +32,16 @@ pub struct StructInfo {
     pub fields: Vec<(String, Ty)>,
 }
 
+#[derive(Debug, Clone)]
+pub struct EnumInfo {
+    pub variants: HashMap<String, Vec<Ty>>,
+}
+
 #[derive(Debug)]
 pub struct SemInfo {
     pub fns: HashMap<String, FnSig>,
     pub structs: HashMap<String, StructInfo>,
+    pub enums: HashMap<String, EnumInfo>,
     pub methods: HashMap<String, HashMap<String, MethodSig>>, // type -> method -> sig
 }
 
@@ -57,10 +65,29 @@ fn serr(span: Span, msg: impl Into<String>) -> SemError {
 
 pub fn check(prog: &LinkedProgram) -> Result<SemInfo, SemError> {
     let mut fns: HashMap<String, FnSig> = HashMap::new();
+    let mut enums: HashMap<String, EnumInfo> = HashMap::new();
     let mut structs: HashMap<String, StructInfo> = HashMap::new();
     let mut methods: HashMap<String, HashMap<String, MethodSig>> = HashMap::new();
 
+    for e in &prog.enums {
+        if enums.contains_key(&e.name) {
+            return Err(serr(e.span, format!("duplicate enum type: {}", e.name)));
+        }
+        enums.insert(
+            e.name.clone(),
+            EnumInfo {
+                variants: HashMap::new(),
+            },
+        );
+    }
+
     for s in &prog.structs {
+        if enums.contains_key(&s.name) {
+            return Err(serr(
+                s.span,
+                format!("type name {} is already used by an enum", s.name),
+            ));
+        }
         if structs.contains_key(&s.name) {
             return Err(serr(s.span, format!("duplicate struct type: {}", s.name)));
         }
@@ -77,7 +104,7 @@ pub fn check(prog: &LinkedProgram) -> Result<SemInfo, SemError> {
                     ),
                 ));
             }
-            let fty = parse_ty(&f.ty, &structs)
+            let fty = parse_ty(&f.ty, &structs, &enums)
                 .ok_or_else(|| serr(f.span, format!("unknown type: {}", f.ty)))?;
             if matches!(fty, Ty::Struct(_)) {
                 return Err(serr(
@@ -90,15 +117,32 @@ pub fn check(prog: &LinkedProgram) -> Result<SemInfo, SemError> {
         structs.insert(s.name.clone(), StructInfo { fields });
     }
 
+    for e in &prog.enums {
+        let mut variants = HashMap::new();
+        let mut seen = HashSet::<String>::new();
+        for v in &e.variants {
+            if !seen.insert(v.name.clone()) {
+                return Err(serr(v.span, format!("duplicate variant: {}", v.name)));
+            }
+            let mut fields = Vec::new();
+            for (ty_name, ty_span) in &v.fields {
+                let fty = parse_ty(ty_name, &structs, &enums)
+                    .ok_or_else(|| serr(*ty_span, format!("unknown type: {ty_name}")))?;
+                fields.push(fty);
+            }
+            variants.insert(v.name.clone(), fields);
+        }
+        enums.insert(e.name.clone(), EnumInfo { variants });
+    }
+
     for f in &prog.funcs {
         if fns.contains_key(&f.name) {
             return Err(serr(f.span, format!("duplicate function: {}", f.name)));
         }
         let ret = match &f.ret_ty {
             None => Ty::Void,
-            Some(s) => {
-                parse_ty(s, &structs).ok_or_else(|| serr(f.span, format!("unknown type: {s}")))?
-            }
+            Some(s) => parse_ty(s, &structs, &enums)
+                .ok_or_else(|| serr(f.span, format!("unknown type: {s}")))?,
         };
         let mut params = Vec::new();
         let mut seen = HashMap::<String, Span>::new();
@@ -112,7 +156,7 @@ pub fn check(prog: &LinkedProgram) -> Result<SemInfo, SemError> {
                     ),
                 ));
             }
-            let t = parse_ty(&p.ty, &structs)
+            let t = parse_ty(&p.ty, &structs, &enums)
                 .ok_or_else(|| serr(p.span, format!("unknown type: {}", p.ty)))?;
             params.push((p.name.clone(), t));
         }
@@ -173,30 +217,57 @@ pub fn check(prog: &LinkedProgram) -> Result<SemInfo, SemError> {
     // per-function check
     for f in &prog.funcs {
         let sig = fns.get(&f.name).unwrap();
-        check_func(f, sig, &fns, &structs, &methods)?;
+        check_func(f, sig, &fns, &enums, &structs, &methods)?;
     }
 
     Ok(SemInfo {
         fns,
         structs,
+        enums,
         methods,
     })
 }
 
-pub fn parse_ty(s: &str, structs: &HashMap<String, StructInfo>) -> Option<Ty> {
-    Some(match s {
-        "intg" | "int" => Ty::Int,
-        "bool" | "bol" => Ty::Bool,
-        "text" | "txt" => Ty::Text,
-        "void" | "vod" => Ty::Void,
-        other => {
-            if structs.contains_key(other) {
-                Ty::Struct(other.to_string())
-            } else {
-                return None;
-            }
+pub fn parse_ty(
+    s: &str,
+    structs: &HashMap<String, StructInfo>,
+    enums: &HashMap<String, EnumInfo>,
+) -> Option<Ty> {
+    fn parse<'a>(
+        src: &'a str,
+        structs: &HashMap<String, StructInfo>,
+        enums: &HashMap<String, EnumInfo>,
+    ) -> Option<Ty> {
+        if let Some(rest) = src.strip_prefix('[') {
+            let idx = rest.find(']')?;
+            let (len_str, tail) = rest.split_at(idx);
+            let len: usize = len_str.parse().ok()?;
+            let tail = tail.strip_prefix(']')?;
+            let elem = parse(tail, structs, enums)?;
+            return Some(Ty::Array {
+                len,
+                elem: Box::new(elem),
+            });
         }
-    })
+
+        Some(match src {
+            "intg" | "int" => Ty::Int,
+            "bool" | "bol" => Ty::Bool,
+            "text" | "txt" => Ty::Text,
+            "void" | "vod" => Ty::Void,
+            other => {
+                if structs.contains_key(other) {
+                    Ty::Struct(other.to_string())
+                } else if enums.contains_key(other) {
+                    Ty::Enum(other.to_string())
+                } else {
+                    return None;
+                }
+            }
+        })
+    }
+
+    parse(s, structs, enums)
 }
 
 #[derive(Clone)]
@@ -209,12 +280,13 @@ fn check_func(
     f: &Func,
     sig: &FnSig,
     fns: &HashMap<String, FnSig>,
+    enums: &HashMap<String, EnumInfo>,
     structs: &HashMap<String, StructInfo>,
     methods: &HashMap<String, HashMap<String, MethodSig>>,
 ) -> Result<(), SemError> {
     let mut scopes: Vec<HashMap<String, VarInfo>> = vec![HashMap::new()];
 
-    // params as immutable vars
+    // params as immutable bindings
     for (i, (name, ty)) in sig.params.iter().enumerate() {
         let mutability = f
             .method
@@ -240,6 +312,7 @@ fn check_func(
             &sig.ret,
             fns,
             methods,
+            enums,
             structs,
             &mut scopes,
             &mut loop_depth,
@@ -263,6 +336,7 @@ fn check_stmt(
     ret_ty: &Ty,
     fns: &HashMap<String, FnSig>,
     methods: &HashMap<String, HashMap<String, MethodSig>>,
+    enums: &HashMap<String, EnumInfo>,
     structs: &HashMap<String, StructInfo>,
     scopes: &mut Vec<HashMap<String, VarInfo>>,
     loop_depth: &mut usize,
@@ -275,9 +349,9 @@ fn check_stmt(
             init,
             span,
         } => {
-            let decl_ty =
-                parse_ty(ty, structs).ok_or_else(|| serr(*span, format!("unknown type: {ty}")))?;
-            let init_ty = check_expr(init, fns, methods, scopes, structs)?;
+            let decl_ty = parse_ty(ty, structs, enums)
+                .ok_or_else(|| serr(*span, format!("unknown type: {ty}")))?;
+            let init_ty = check_expr(init, fns, methods, scopes, enums, structs)?;
             if decl_ty != init_ty {
                 return Err(serr(
                     *span,
@@ -300,9 +374,12 @@ fn check_stmt(
             AssignTarget::Name(name) => {
                 let (vty, mutability) = lookup_var(name, *span, scopes)?;
                 if !mutability {
-                    return Err(serr(*span, format!("cannot assign to lock: {name}")));
+                    return Err(serr(
+                        *span,
+                        format!("cannot assign to immutable binding: {name}"),
+                    ));
                 }
-                let ety = check_expr(expr, fns, methods, scopes, structs)?;
+                let ety = check_expr(expr, fns, methods, scopes, enums, structs)?;
                 if vty != ety {
                     return Err(serr(
                         *span,
@@ -314,7 +391,10 @@ fn check_stmt(
             AssignTarget::Field { base, field } => {
                 let (bty, mutability) = lookup_var(base, *span, scopes)?;
                 if !mutability {
-                    return Err(serr(*span, format!("cannot assign to lock: {base}")));
+                    return Err(serr(
+                        *span,
+                        format!("cannot assign to immutable binding: {base}"),
+                    ));
                 }
                 let sname = match bty {
                     Ty::Struct(ref n) => n,
@@ -336,9 +416,32 @@ fn check_stmt(
                     }
                 }
                 let fty = fty.ok_or_else(|| serr(*span, format!("unknown field: {field}")))?;
-                let ety = check_expr(expr, fns, methods, scopes, structs)?;
+                let ety = check_expr(expr, fns, methods, scopes, enums, structs)?;
                 if fty != ety {
                     return Err(serr(*span, "type mismatch in field assignment"));
+                }
+                Ok(false)
+            }
+            AssignTarget::Index { base, .. } => {
+                let (bty, mutability) = lookup_var(base, *span, scopes)?;
+                if !mutability {
+                    return Err(serr(
+                        *span,
+                        format!("cannot assign to immutable binding: {base}"),
+                    ));
+                }
+                let elem_ty = match bty {
+                    Ty::Array { ref elem, .. } => elem.as_ref().clone(),
+                    _ => {
+                        return Err(serr(
+                            *span,
+                            format!("{base} is not an array for index assignment"),
+                        ))
+                    }
+                };
+                let ety = check_expr(expr, fns, methods, scopes, enums, structs)?;
+                if ety != elem_ty {
+                    return Err(serr(*span, "type mismatch in index assignment"));
                 }
                 Ok(false)
             }
@@ -347,7 +450,7 @@ fn check_stmt(
             // MVP: statement expression must be a call
             match expr {
                 Expr::Call { .. } => {
-                    let _ = check_expr(expr, fns, methods, scopes, structs)?;
+                    let _ = check_expr(expr, fns, methods, scopes, enums, structs)?;
                     Ok(false)
                 }
                 _ => Err(serr(
@@ -367,7 +470,7 @@ fn check_stmt(
                     let e = expr
                         .as_ref()
                         .ok_or_else(|| serr(*span, "non-void function must return a value"))?;
-                    let ety = check_expr(e, fns, methods, scopes, structs)?;
+                    let ety = check_expr(e, fns, methods, scopes, enums, structs)?;
                     if ety != *ret_ty {
                         return Err(serr(*span, "return type mismatch"));
                     }
@@ -379,14 +482,15 @@ fn check_stmt(
             arms, else_body, ..
         } => {
             for (c, b) in arms {
-                let cty = check_expr(c, fns, methods, scopes, structs)?;
+                let cty = check_expr(c, fns, methods, scopes, enums, structs)?;
                 if cty != Ty::Bool {
                     return Err(serr(c.span(), "when/elif condition must be bool"));
                 }
                 scopes.push(HashMap::new());
                 let mut local_ret = false;
                 for s in b {
-                    local_ret |= check_stmt(s, ret_ty, fns, methods, structs, scopes, loop_depth)?;
+                    local_ret |=
+                        check_stmt(s, ret_ty, fns, methods, enums, structs, scopes, loop_depth)?;
                 }
                 scopes.pop();
                 let _ = local_ret;
@@ -395,15 +499,17 @@ fn check_stmt(
                 scopes.push(HashMap::new());
                 let mut local_ret = false;
                 for s in b {
-                    local_ret |= check_stmt(s, ret_ty, fns, methods, structs, scopes, loop_depth)?;
+                    local_ret |=
+                        check_stmt(s, ret_ty, fns, methods, enums, structs, scopes, loop_depth)?;
                 }
                 scopes.pop();
                 let _ = local_ret;
             }
             Ok(false)
         }
+        Stmt::Case { span, .. } => Err(serr(*span, "case is not supported yet")),
         Stmt::While { cond, body, .. } => {
-            let cty = check_expr(cond, fns, methods, scopes, structs)?;
+            let cty = check_expr(cond, fns, methods, scopes, enums, structs)?;
             if cty != Ty::Bool {
                 return Err(serr(cond.span(), "loop condition must be bool"));
             }
@@ -411,7 +517,8 @@ fn check_stmt(
             scopes.push(HashMap::new());
             let mut local_ret = false;
             for s in body {
-                local_ret |= check_stmt(s, ret_ty, fns, methods, structs, scopes, loop_depth)?;
+                local_ret |=
+                    check_stmt(s, ret_ty, fns, methods, enums, structs, scopes, loop_depth)?;
             }
             scopes.pop();
             *loop_depth -= 1;
@@ -426,7 +533,7 @@ fn check_stmt(
         }
         Stmt::Continue { span } => {
             if *loop_depth == 0 {
-                return Err(serr(*span, "next/cnt is only allowed inside loop"));
+                return Err(serr(*span, "next/nxt is only allowed inside loop"));
             }
             Ok(true)
         }
@@ -451,6 +558,7 @@ fn check_expr(
     fns: &HashMap<String, FnSig>,
     methods: &HashMap<String, HashMap<String, MethodSig>>,
     scopes: &Vec<HashMap<String, VarInfo>>,
+    enums: &HashMap<String, EnumInfo>,
     structs: &HashMap<String, StructInfo>,
 ) -> Result<Ty, SemError> {
     match e {
@@ -477,7 +585,7 @@ fn check_expr(
                     .ok_or_else(|| serr(*fspan, format!("unknown field: {fname}")))?
                     .1
                     .clone();
-                let ety = check_expr(expr, fns, methods, scopes, structs)?;
+                let ety = check_expr(expr, fns, methods, scopes, enums, structs)?;
                 if ety != fty {
                     return Err(serr(*fspan, "field type mismatch"));
                 }
@@ -491,7 +599,7 @@ fn check_expr(
             Ok(Ty::Struct(name.clone()))
         }
         Expr::Field { base, field, span } => {
-            let bty = check_expr(base, fns, methods, scopes, structs)?;
+            let bty = check_expr(base, fns, methods, scopes, enums, structs)?;
             let sname = match bty {
                 Ty::Struct(n) => n,
                 _ => return Err(serr(*span, "field access on non-struct")),
@@ -508,9 +616,36 @@ fn check_expr(
                 .clone();
             Ok(fty)
         }
+        Expr::Index { base, index, span } => {
+            let bty = check_expr(base, fns, methods, scopes, enums, structs)?;
+            let ity = check_expr(index, fns, methods, scopes, enums, structs)?;
+            if ity != Ty::Int {
+                return Err(serr(index.span(), "index must be int"));
+            }
+            match bty {
+                Ty::Array { elem, .. } => Ok(*elem),
+                _ => Err(serr(*span, "indexing is only supported on arrays")),
+            }
+        }
+        Expr::ArrayLit { elements, span } => {
+            if elements.is_empty() {
+                return Err(serr(*span, "array literal cannot be empty"));
+            }
+            let first = check_expr(&elements[0], fns, methods, scopes, enums, structs)?;
+            for e in elements.iter().skip(1) {
+                let t = check_expr(e, fns, methods, scopes, enums, structs)?;
+                if t != first {
+                    return Err(serr(e.span(), "array elements must match"));
+                }
+            }
+            Ok(Ty::Array {
+                len: elements.len(),
+                elem: Box::new(first),
+            })
+        }
         Expr::BuiltinPrint(_) => Ok(Ty::Void),
         Expr::Unary { op, expr, span } => {
-            let t = check_expr(expr, fns, methods, scopes, structs)?;
+            let t = check_expr(expr, fns, methods, scopes, enums, structs)?;
             match op {
                 UnOp::Neg if t == Ty::Int => Ok(Ty::Int),
                 UnOp::Not if t == Ty::Bool => Ok(Ty::Bool),
@@ -518,8 +653,8 @@ fn check_expr(
             }
         }
         Expr::Binary { op, lhs, rhs, span } => {
-            let a = check_expr(lhs, fns, methods, scopes, structs)?;
-            let b = check_expr(rhs, fns, methods, scopes, structs)?;
+            let a = check_expr(lhs, fns, methods, scopes, enums, structs)?;
+            let b = check_expr(rhs, fns, methods, scopes, enums, structs)?;
             use BinOp::*;
             let r = match op {
                 Add | Sub | Mul | Div | Mod | Shl | Shr | BitAnd | BitXor | BitOr => {
@@ -554,7 +689,7 @@ fn check_expr(
                 }
                 match &args[0] {
                     Arg::Pos(x) => {
-                        let t = check_expr(x, fns, methods, scopes, structs)?;
+                        let t = check_expr(x, fns, methods, scopes, enums, structs)?;
                         if t != Ty::Int && t != Ty::Text {
                             return Err(serr(x.span(), "echo arg must be int or text"));
                         }
@@ -581,10 +716,19 @@ fn check_expr(
                             "method expects self; call with value.method(...)",
                         ));
                     }
-                    validate_args(args, &sig.params, *span, fns, methods, scopes, structs)?;
+                    validate_args(
+                        args,
+                        &sig.params,
+                        *span,
+                        fns,
+                        methods,
+                        enums,
+                        scopes,
+                        structs,
+                    )?;
                     Ok(sig.ret.clone())
                 } else {
-                    let recv_ty = check_expr(base, fns, methods, scopes, structs)?;
+                    let recv_ty = check_expr(base, fns, methods, scopes, enums, structs)?;
                     let sname = match recv_ty {
                         Ty::Struct(n) => n,
                         _ => return Err(serr(*field_span, "method call requires struct receiver")),
@@ -601,14 +745,32 @@ fn check_expr(
                             "associated function cannot use value receiver",
                         ));
                     }
-                    validate_args(args, &sig.params[1..], *span, fns, methods, scopes, structs)?;
+                    validate_args(
+                        args,
+                        &sig.params[1..],
+                        *span,
+                        fns,
+                        methods,
+                        enums,
+                        scopes,
+                        structs,
+                    )?;
                     Ok(sig.ret.clone())
                 }
             } else if let Expr::Ident(fname, sp) = &**callee {
                 let sig = fns
                     .get(fname)
                     .ok_or_else(|| serr(*sp, format!("unknown function: {fname}")))?;
-                validate_args(args, &sig.params, *span, fns, methods, scopes, structs)?;
+                validate_args(
+                    args,
+                    &sig.params,
+                    *span,
+                    fns,
+                    methods,
+                    enums,
+                    scopes,
+                    structs,
+                )?;
                 Ok(sig.ret.clone())
             } else {
                 Err(serr(*span, "invalid call target"))
@@ -623,6 +785,7 @@ fn validate_args(
     span: Span,
     fns: &HashMap<String, FnSig>,
     methods: &HashMap<String, HashMap<String, MethodSig>>,
+    enums: &HashMap<String, EnumInfo>,
     scopes: &Vec<HashMap<String, VarInfo>>,
     structs: &HashMap<String, StructInfo>,
 ) -> Result<(), SemError> {
@@ -642,7 +805,7 @@ fn validate_args(
                 Arg::Pos(e) => e,
                 Arg::Named { .. } => unreachable!(),
             };
-            let xt = check_expr(expr, fns, methods, scopes, structs)?;
+            let xt = check_expr(expr, fns, methods, scopes, enums, structs)?;
             if xt != expected[i].1 {
                 return Err(serr(expr.span(), "arg type mismatch"));
             }
@@ -683,7 +846,7 @@ fn validate_args(
             let (expr, arg_sp) = named
                 .get(pname)
                 .ok_or_else(|| serr(span, format!("missing parameter: {pname}")))?;
-            let ety = check_expr(expr, fns, methods, scopes, structs)?;
+            let ety = check_expr(expr, fns, methods, scopes, enums, structs)?;
             if ety != *pty {
                 return Err(serr(*arg_sp, "arg type mismatch"));
             }

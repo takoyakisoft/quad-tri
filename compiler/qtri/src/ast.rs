@@ -3,12 +3,14 @@ use crate::lex::Span;
 #[derive(Debug)]
 pub struct Program {
     pub imports: Vec<Import>,
+    pub enums: Vec<EnumDef>,
     pub structs: Vec<StructDef>,
     pub funcs: Vec<Func>,
 }
 
 #[derive(Debug)]
 pub struct LinkedProgram {
+    pub enums: Vec<EnumDef>,
     pub structs: Vec<StructDef>,
     pub funcs: Vec<Func>,
 }
@@ -20,10 +22,30 @@ pub struct Import {
 }
 
 #[derive(Debug)]
+pub struct EnumDef {
+    pub name: String,
+    pub variants: Vec<EnumVariant>,
+    pub span: Span,
+}
+
+#[derive(Debug)]
+pub struct EnumVariant {
+    pub name: String,
+    pub fields: Vec<(String, Span)>,
+    pub span: Span,
+}
+
+#[derive(Debug)]
 pub struct StructDef {
     pub name: String,
     pub fields: Vec<Param>,
     pub span: Span,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Visibility {
+    Public,
+    Private,
 }
 
 #[derive(Debug)]
@@ -48,6 +70,8 @@ pub struct Param {
     pub name: String,
     pub ty: String,
     pub mutable: bool,
+    #[allow(dead_code)]
+    pub vis: Visibility,
     pub span: Span,
 }
 
@@ -59,7 +83,7 @@ pub enum Stmt {
         ty: String,
         init: Expr,
         span: Span,
-    }, // vars/lock
+    }, // cell/bind
     Assign {
         target: AssignTarget,
         expr: Expr,
@@ -77,12 +101,17 @@ pub enum Stmt {
         #[allow(dead_code)]
         span: Span,
     }, // loop <cond>:
+    Case {
+        scrutinee: Expr,
+        arms: Vec<(Pattern, Vec<Stmt>)>,
+        span: Span,
+    },
     Break {
         span: Span,
     }, // stop/brk
     Continue {
         span: Span,
-    }, // next/cnt
+    }, // next/nxt
     Back {
         expr: Option<Expr>,
         span: Span,
@@ -90,13 +119,14 @@ pub enum Stmt {
     Expr {
         expr: Expr,
         span: Span,
-    }, // 例: echo(...), foo(...)
+    }, // e.g. echo(...), foo(...)
 }
 
 #[derive(Debug)]
 pub enum AssignTarget {
     Name(String),
     Field { base: String, field: String },
+    Index { base: String, index: Expr },
 }
 
 #[derive(Debug)]
@@ -105,6 +135,16 @@ pub enum Arg {
     Named {
         name: String,
         expr: Expr,
+        span: Span,
+    },
+}
+
+#[derive(Debug)]
+pub enum Pattern {
+    EnumVariant {
+        enum_name: String,
+        variant: String,
+        bindings: Vec<String>,
         span: Span,
     },
 }
@@ -143,9 +183,18 @@ pub enum Expr {
     Str(String, Span),
     Ident(String, Span),
     BuiltinPrint(Span), // echo / prn
+    ArrayLit {
+        elements: Vec<Expr>,
+        span: Span,
+    },
     StructLit {
         name: String,
         fields: Vec<(String, Expr, Span)>,
+        span: Span,
+    },
+    Index {
+        base: Box<Expr>,
+        index: Box<Expr>,
         span: Span,
     },
     Field {
@@ -178,7 +227,9 @@ impl Expr {
             Expr::Str(_, s) => *s,
             Expr::Ident(_, s) => *s,
             Expr::BuiltinPrint(s) => *s,
+            Expr::ArrayLit { span, .. } => *span,
             Expr::StructLit { span, .. } => *span,
+            Expr::Index { span, .. } => *span,
             Expr::Field { span, .. } => *span,
             Expr::Call { span, .. } => *span,
             Expr::Unary { span, .. } => *span,

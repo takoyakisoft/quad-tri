@@ -8,6 +8,7 @@ These instructions apply to the entire repository.
 - Assignment is statement-only via `:=`; do not introduce expression assignments.
 - Function calls must be either fully positional or fully named (`name: expr`) with no mixing or duplicate names.
 - Blocks are introduced with `:` and indented using spaces only (tabs are forbidden).
+- Write documentation, comments, and examples in English; avoid Japanese text in new or updated content.
 
 ## Development notes
 - Build and test using Cargo from the `compiler` directory (`cargo build -p qtrt --release`, `cargo build -p qtri --release`, and `cargo check/test`). The compiler uses the Cranelift backend, so LLVM is not required, but a system linker (MSVC link.exe or cc) is needed.

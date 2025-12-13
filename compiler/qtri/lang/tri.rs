@@ -2,12 +2,14 @@ use crate::lex::Kw;
 
 pub fn keyword_of(s: &str) -> Option<Kw> {
     Some(match s {
-        // --- 既存 ---
-        "use" => Kw::From, // import 相当（内部表現は From に寄せる）
+        // Core keywords
+        "use" => Kw::From, // import equivalent (normalized to From internally)
         "typ" => Kw::Type,
         "def" => Kw::Func,
         "let" => Kw::Lock,
         "var" => Kw::Vars,
+        "pub" => Kw::Public,
+        "prv" => Kw::Private,
         "iff" => Kw::When,
         "elf" => Kw::Elif,
         "els" => Kw::Else,
@@ -15,20 +17,19 @@ pub fn keyword_of(s: &str) -> Option<Kw> {
         "ret" => Kw::Back,
         "prn" => Kw::Print,
         "brk" => Kw::Stop,
-        "cnt" => Kw::Next,
+        "nxt" => Kw::Next,
         "ovr" => Kw::Over,
 
-        // --- Stage1 completion (data structures / memory) ---
+        // Stage1 completion (data structures / memory)
         "imp" => Kw::Impl,
         "new" => Kw::Make,
         "slf" => Kw::Self_,
         "vec" => Kw::List,
         "psh" => Kw::Push,
-        "len" => Kw::Size,
         "enm" => Kw::Enum,
         "cas" => Kw::Case,
 
-        // --- Stage1 completion (I/O / errors) ---
+        // Stage1 completion (I/O / errors)
         "opn" => Kw::Open,
         "red" => Kw::Read,
         "wrt" => Kw::Save,
