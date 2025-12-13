@@ -1,7 +1,7 @@
 use std::collections::HashSet;
 use std::path::{Path, PathBuf};
 
-use crate::ast::Program;
+use crate::ast::LinkedProgram;
 use crate::lex::{self, Language, Span};
 use crate::parse;
 
@@ -44,14 +44,11 @@ impl std::fmt::Display for LoadError {
 
 impl std::error::Error for LoadError {}
 
-pub fn load_program(lang: Language, entry: &Path) -> Result<Program, LoadError> {
+pub fn load_program(lang: Language, entry: &Path) -> Result<LinkedProgram, LoadError> {
     let mut funcs = Vec::new();
     let mut visited = HashSet::<PathBuf>::new();
     load_one(lang, entry, None, &mut visited, &mut funcs)?;
-    Ok(Program {
-        imports: Vec::new(),
-        funcs,
-    })
+    Ok(LinkedProgram { funcs })
 }
 
 fn load_one(
@@ -115,11 +112,7 @@ mod tests {
         let dir = tempdir().unwrap();
         let root = dir.path();
 
-        let lib = write_file(
-            root,
-            "lib.qd",
-            "func helper() -> intg:\n    back 1\n",
-        );
+        let lib = write_file(root, "lib.qd", "func helper() -> intg:\n    back 1\n");
         let entry = write_file(
             root,
             "main.qd",
@@ -138,11 +131,7 @@ mod tests {
         let dir = tempdir().unwrap();
         let root = dir.path();
 
-        write_file(
-            root,
-            "pkg/util.qd",
-            "func util() -> intg:\n    back 2\n",
-        );
+        write_file(root, "pkg/util.qd", "func util() -> intg:\n    back 2\n");
         write_file(
             root,
             "pkg/mod.qd",
@@ -165,16 +154,8 @@ mod tests {
         let dir = tempdir().unwrap();
         let root = dir.path();
 
-        let a = write_file(
-            root,
-            "a.tr",
-            "use \"b.tr\"\n\ndef a() -> int:\n    ret 1\n",
-        );
-        write_file(
-            root,
-            "b.tr",
-            "use \"a.tr\"\n\ndef b() -> int:\n    ret 2\n",
-        );
+        let a = write_file(root, "a.tr", "use \"b.tr\"\n\ndef a() -> int:\n    ret 1\n");
+        write_file(root, "b.tr", "use \"a.tr\"\n\ndef b() -> int:\n    ret 2\n");
 
         let program = load_program(Language::Tri, &a).expect("program loads");
         let names: Vec<_> = program.funcs.iter().map(|f| f.name.as_str()).collect();

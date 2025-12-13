@@ -4,12 +4,12 @@ use "greeter.tri"
 def main() -> int:
     greet("Tri modules")
 
-    var sum: int := add(3, 4)
-    prn("3 + 4 =")
+    var sum: int := add(2, 5)
+    prn("2 + 5 =")
     prn(sum)
 
-    var fact_val: int := fact(5)
-    prn("5! =")
-    prn(fact_val)
+    var fact: int := factorial(4)
+    prn("4! =")
+    prn(fact)
 
     ret 0

@@ -24,19 +24,25 @@ pub fn parse_program(tokens: &[Token]) -> Result<Program, ParseError> {
     p.skip_newlines();
     let mut imports = Vec::new();
     let mut funcs = Vec::new();
+    // Parse imports first
     while !p.at_eof() {
-        match &p.peek().kind {
-            TokKind::Kw(Kw::From) => imports.push(p.parse_import()?),
-            TokKind::Kw(Kw::Func) => funcs.push(p.parse_func()?),
-            _ => {
-                let t = p.peek();
-                return Err(perr(
-                    t.span,
-                    format!("expected func/from, got {:?}", t.kind),
-                ));
-            }
+        if let TokKind::Kw(Kw::From) = p.peek().kind {
+            imports.push(p.parse_import()?);
+            p.skip_newlines();
+        } else {
+            break;
         }
-        p.skip_newlines();
+    }
+
+    // Then parse functions
+    while !p.at_eof() {
+        if let TokKind::Kw(Kw::Func) = p.peek().kind {
+            funcs.push(p.parse_func()?);
+            p.skip_newlines();
+        } else {
+            let t = p.peek();
+            return Err(perr(t.span, format!("expected func, got {:?}", t.kind)));
+        }
     }
     Ok(Program { imports, funcs })
 }

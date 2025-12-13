@@ -40,13 +40,13 @@ use "greeter.tri"
 def main() -> int:
     greet("Tri modules")
 
-    var sum: int := add(3, 4)
-    prn("3 + 4 =")
+    var sum: int := add(2, 5)
+    prn("2 + 5 =")
     prn(sum)
 
-    var fact_val: int := fact(5)
-    prn("5! =")
-    prn(fact_val)
+    var fact: int := factorial(4)
+    prn("4! =")
+    prn(fact)
 
     ret 0
 ```
@@ -64,5 +64,25 @@ cargo build -p qtri --release
 
 ```bash
 cd compiler
-cargo run -p qtri
+# stage0 driver (compiler front-end)
+# - lex:   tokenize input
+# - build: build an executable
+
+# Lex (prints tokens)
+cargo run -p qtri --release -- lex --lang quad ../examples/quad/hello.quad
+cargo run -p qtri --release -- lex --lang tri  ../examples/tri/hello.tri
+
+# Build & run a single-file example
+cargo run -p qtri --release -- build --lang quad ../examples/quad/hello.quad -o target/tmp/quad_hello.exe
+./target/tmp/quad_hello.exe
+
+cargo run -p qtri --release -- build --lang tri  ../examples/tri/hello.tri -o target/tmp/tri_hello.exe
+./target/tmp/tri_hello.exe
+
+# Build & run module-based examples
+cargo run -p qtri --release -- build --lang quad ../examples/quad/modules/main.quad -o target/tmp/quad_modules.exe
+./target/tmp/quad_modules.exe
+
+cargo run -p qtri --release -- build --lang tri  ../examples/tri/modules/main.tri -o target/tmp/tri_modules.exe
+./target/tmp/tri_modules.exe
 ```

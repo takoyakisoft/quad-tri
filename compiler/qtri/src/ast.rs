@@ -7,6 +7,11 @@ pub struct Program {
 }
 
 #[derive(Debug)]
+pub struct LinkedProgram {
+    pub funcs: Vec<Func>,
+}
+
+#[derive(Debug)]
 pub struct Import {
     pub path: String,
     pub span: Span,

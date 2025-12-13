@@ -1,8 +1,8 @@
+use crate::ast::LinkedProgram;
+use crate::emit_cranelift;
+use crate::sem::SemInfo;
 use std::path::{Path, PathBuf};
 use std::process::Command;
-use crate::ast::Program;
-use crate::sem::SemInfo;
-use crate::emit_cranelift;
 
 #[derive(Debug)]
 pub struct DriverError(pub String);
@@ -17,7 +17,7 @@ fn derr(msg: impl Into<String>) -> DriverError {
     DriverError(msg.into())
 }
 
-pub fn build_exe(prog: &Program, sem: &SemInfo, out_exe: &Path) -> Result<(), DriverError> {
+pub fn build_exe(prog: &LinkedProgram, sem: &SemInfo, out_exe: &Path) -> Result<(), DriverError> {
     let tmp_dir = std::env::temp_dir().join("quad0_build");
     std::fs::create_dir_all(&tmp_dir).map_err(|e| derr(format!("tmp dir: {e}")))?;
 
@@ -27,9 +27,8 @@ pub fn build_exe(prog: &Program, sem: &SemInfo, out_exe: &Path) -> Result<(), Dr
     // 1) Cranelift: generate object file
     let obj_bytes = emit_cranelift::emit_module(prog, sem)
         .map_err(|e| derr(format!("cranelift emit error: {e}")))?;
-    
-    std::fs::write(&obj_path, obj_bytes)
-        .map_err(|e| derr(format!("write obj: {e}")))?;
+
+    std::fs::write(&obj_path, obj_bytes).map_err(|e| derr(format!("write obj: {e}")))?;
 
     // 2) shim main
     let shim = r#"
@@ -46,10 +45,7 @@ fn main() {
 
     // 4) rustc link
     let mut cmd = Command::new("rustc");
-    cmd.arg(&shim_path)
-        .arg("-O")
-        .arg("-o")
-        .arg(out_exe);
+    cmd.arg(&shim_path).arg("-O").arg("-o").arg(out_exe);
 
     if cfg!(windows) {
         // Windows: 既存のままでOK
@@ -63,15 +59,19 @@ fn main() {
         // Linux: out.o の「後ろ」に libquadrt.a を置く（順序が重要）
         let lib_path = lib_dir.join(format!("lib{lib_name}.a"));
 
-        cmd.arg("-C").arg(format!("link-arg={}", obj_path.display()))
-           .arg("-C").arg(format!("link-arg={}", lib_path.display()));
+        cmd.arg("-C")
+            .arg(format!("link-arg={}", obj_path.display()))
+            .arg("-C")
+            .arg(format!("link-arg={}", lib_path.display()));
     }
 
-    let st = cmd.status().map_err(|e| derr(format!("failed to run rustc: {e}")))?;
+    let st = cmd
+        .status()
+        .map_err(|e| derr(format!("failed to run rustc: {e}")))?;
     if !st.success() {
         return Err(derr("rustc link failed"));
     }
-    
+
     Ok(())
 }
 
@@ -104,5 +104,7 @@ fn find_quadrt_lib() -> Result<(PathBuf, String), DriverError> {
         }
     }
 
-    Err(derr("quadrt staticlib not found. run: cargo build -p quadrt --release"))
+    Err(derr(
+        "quadrt staticlib not found. run: cargo build -p quadrt --release",
+    ))
 }
