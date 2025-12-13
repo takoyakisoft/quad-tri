@@ -10,5 +10,5 @@ These instructions apply to the entire repository.
 - Blocks are introduced with `:` and indented using spaces only (tabs are forbidden).
 
 ## Development notes
-- Build and test using Cargo from the `compiler` directory (`cargo build -p quadrt --release`, `cargo build -p quad0 --release`, and `cargo test`). LLVM tools (e.g., `llc`) are required for full builds.
+- Build and test using Cargo from the `compiler` directory (`cargo build -p qtrt --release`, `cargo build -p qtri --release`, and `cargo test`). LLVM tools (e.g., `llc`) are required for full builds.
 - When adding examples or docs, keep keyword spellings consistent: Quad uses 4-letter keywords; Tri uses 3-letter keywords.

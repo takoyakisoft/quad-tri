@@ -1,5 +1,8 @@
 use std::path::{Path, PathBuf};
 use std::process::Command;
+use crate::ast::Program;
+use crate::sem::SemInfo;
+use crate::emit_cranelift;
 
 #[derive(Debug)]
 pub struct DriverError(pub String);
@@ -14,25 +17,19 @@ fn derr(msg: impl Into<String>) -> DriverError {
     DriverError(msg.into())
 }
 
-pub fn build_exe(ll_path: &Path, out_exe: &Path) -> Result<(), DriverError> {
+pub fn build_exe(prog: &Program, sem: &SemInfo, out_exe: &Path) -> Result<(), DriverError> {
     let tmp_dir = std::env::temp_dir().join("quad0_build");
     std::fs::create_dir_all(&tmp_dir).map_err(|e| derr(format!("tmp dir: {e}")))?;
 
     let obj_path = tmp_dir.join(if cfg!(windows) { "out.obj" } else { "out.o" });
     let shim_path = tmp_dir.join("shim.rs");
 
-    // 1) llc: .ll -> .obj
-    let st = Command::new("llc")
-        .arg("-O0")
-        .arg("-filetype=obj")
-        .arg(ll_path)
-        .arg("-o")
-        .arg(&obj_path)
-        .status()
-        .map_err(|e| derr(format!("failed to run llc: {e}")))?;
-    if !st.success() {
-        return Err(derr("llc failed"));
-    }
+    // 1) Cranelift: generate object file
+    let obj_bytes = emit_cranelift::emit_module(prog, sem)
+        .map_err(|e| derr(format!("cranelift emit error: {e}")))?;
+    
+    std::fs::write(&obj_path, obj_bytes)
+        .map_err(|e| derr(format!("write obj: {e}")))?;
 
     // 2) shim main
     let shim = r#"
@@ -74,7 +71,7 @@ fn main() {
     if !st.success() {
         return Err(derr("rustc link failed"));
     }
-
+    
     Ok(())
 }
 
@@ -91,13 +88,13 @@ fn find_quadrt_lib() -> Result<(PathBuf, String), DriverError> {
     // MSVC: quadrt.lib / Unix: libquadrt.a
     let candidates = if cfg!(windows) {
         vec![
-            (release.join("quadrt.lib"), "quadrt".to_string()),
-            (debug.join("quadrt.lib"), "quadrt".to_string()),
+            (release.join("qtrt.lib"), "qtrt".to_string()),
+            (debug.join("qtrt.lib"), "qtrt".to_string()),
         ]
     } else {
         vec![
-            (release.join("libquadrt.a"), "quadrt".to_string()),
-            (debug.join("libquadrt.a"), "quadrt".to_string()),
+            (release.join("libqtrt.a"), "qtrt".to_string()),
+            (debug.join("libqtrt.a"), "qtrt".to_string()),
         ]
     };
 

@@ -12,7 +12,7 @@ pub fn keyword_of(s: &str) -> Option<Kw> {
         "else" => Kw::Else,
         "loop" => Kw::Loop,
         "back" => Kw::Back,
-        "echo" => Kw::Echo,
+        "echo" => Kw::Print,
         "stop" => Kw::Stop,
         "next" => Kw::Next,
         "over" => Kw::Over,

@@ -202,7 +202,7 @@ fn check_expr(e: &Expr, fns: &HashMap<String, FnSig>, scopes: &Vec<HashMap<Strin
             }
             Err(serr(*sp, format!("unknown identifier: {name}")))
         }
-        Expr::BuiltinEcho(_) => Ok(Ty::Void),
+        Expr::BuiltinPrint(_) => Ok(Ty::Void),
         Expr::Unary { op, expr, span } => {
             let t = check_expr(expr, fns, scopes)?;
             match op {
@@ -224,7 +224,7 @@ fn check_expr(e: &Expr, fns: &HashMap<String, FnSig>, scopes: &Vec<HashMap<Strin
         }
         Expr::Call { callee, args, span } => {
             // builtin echo(...)
-            if matches!(&**callee, Expr::BuiltinEcho(_)) {
+            if matches!(&**callee, Expr::BuiltinPrint(_)) {
                 if args.len() != 1 { return Err(serr(*span, "echo takes exactly 1 arg")); }
                 match &args[0] {
                     Arg::Pos(x) => {
@@ -253,12 +253,22 @@ fn check_expr(e: &Expr, fns: &HashMap<String, FnSig>, scopes: &Vec<HashMap<Strin
                     return Err(serr(*span, "cannot mix named and positional args"));
                 }
                 if !named.is_empty() {
-                    if named.len() != sig.params.len() {
-                        return Err(serr(*span, "named call must provide all parameters"));
+                    // 1. Check for unknown parameter names.
+                    let param_names: std::collections::HashSet<_> = sig.params.iter().map(|p| &p.0).collect();
+                    for (name, (_, arg_span)) in &named {
+                        if !param_names.contains(name) {
+                            return Err(serr(*arg_span, format!("unknown parameter: '{}'", name)));
+                        }
                     }
+
+                    // 2. Check that all parameters are provided.
+                    if named.len() != sig.params.len() {
+                        return Err(serr(*span, format!("argument count mismatch for named call: expected {}, got {}", sig.params.len(), named.len())));
+                    }
+
+                    // 3. Check types.
                     for (pname, pty) in &sig.params {
-                        let (expr, arg_sp) = named.get(pname)
-                            .ok_or_else(|| serr(*span, format!("unknown named arg: {pname}")))?;
+                        let (expr, arg_sp) = named.get(pname).unwrap(); // Safe due to checks above.
                         let ety = check_expr(expr, fns, scopes)?;
                         if ety != *pty {
                             return Err(serr(*arg_sp, "arg type mismatch"));

@@ -257,7 +257,7 @@ impl<'a> Parser<'a> {
             TokKind::Int(v) => { let sp = t.span; let v = *v; self.next(); Ok(Expr::Int(v, sp)) }
             TokKind::Str(s) => { let sp = t.span; let s = s.clone(); self.next(); Ok(Expr::Str(s, sp)) }
             TokKind::Ident(s) => { let sp = t.span; let s = s.clone(); self.next(); Ok(Expr::Ident(s, sp)) }
-            TokKind::Kw(Kw::Echo) => { let sp = t.span; self.next(); Ok(Expr::BuiltinEcho(sp)) }
+            TokKind::Kw(Kw::Print) => { let sp = t.span; self.next(); Ok(Expr::BuiltinPrint(sp)) }
             TokKind::LParen => {
                 self.next();
                 let e = self.parse_expr(0)?;

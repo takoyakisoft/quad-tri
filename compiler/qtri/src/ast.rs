@@ -25,8 +25,9 @@ pub struct Param {
 pub enum Stmt {
     VarDecl { mutable: bool, name: String, ty: String, init: Expr, span: Span }, // vars/lock
     Assign { name: String, expr: Expr, span: Span }, // :=
-    If { arms: Vec<(Expr, Vec<Stmt>)>, else_body: Option<Vec<Stmt>>, span: Span },
-    While { cond: Expr, body: Vec<Stmt>, span: Span }, // loop <cond>:
+    If { arms: Vec<(Expr, Vec<Stmt>)>, else_body: Option<Vec<Stmt>>,
+         #[allow(dead_code)] span: Span },
+    While { cond: Expr, body: Vec<Stmt>, #[allow(dead_code)] span: Span }, // loop <cond>:
     Break { span: Span },   // stop/brk
     Continue { span: Span },// next/cnt
     Back { expr: Option<Expr>, span: Span },
@@ -57,7 +58,7 @@ pub enum Expr {
     Int(i64, Span),
     Str(String, Span),
     Ident(String, Span),
-    BuiltinEcho(Span), // echo / prn
+    BuiltinPrint(Span), // echo / prn
     Call { callee: Box<Expr>, args: Vec<Arg>, span: Span },
     Unary { op: UnOp, expr: Box<Expr>, span: Span },
     Binary { op: BinOp, lhs: Box<Expr>, rhs: Box<Expr>, span: Span },
@@ -69,7 +70,7 @@ impl Expr {
             Expr::Int(_, s) => *s,
             Expr::Str(_, s) => *s,
             Expr::Ident(_, s) => *s,
-            Expr::BuiltinEcho(s) => *s,
+            Expr::BuiltinPrint(s) => *s,
             Expr::Call { span, .. } => *span,
             Expr::Unary { span, .. } => *span,
             Expr::Binary { span, .. } => *span,

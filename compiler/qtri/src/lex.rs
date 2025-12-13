@@ -18,7 +18,7 @@ pub enum Kw {
     Else,
     Loop,
     Back,
-    Echo,
+    Print,
     Stop,
     Next,
     Over,
@@ -335,7 +335,7 @@ mod tests {
             TokKind::Newline,
 
             TokKind::Indent,
-            TokKind::Kw(Kw::Echo),
+            TokKind::Kw(Kw::Print),
             TokKind::LParen,
             TokKind::Int(123),
             TokKind::RParen,
@@ -369,7 +369,7 @@ mod tests {
             TokKind::Newline,
 
             TokKind::Indent,
-            TokKind::Kw(Kw::Echo),
+            TokKind::Kw(Kw::Print),
             TokKind::LParen,
             TokKind::Int(123),
             TokKind::RParen,

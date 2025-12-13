@@ -1,0 +1,13 @@
+func main() -> intg:
+    vars i: intg := 1
+    loop i <= 100:
+        when i % 15 == 0:
+            echo("FizzBuzz")
+        elif i % 3 == 0:
+            echo("Fizz")
+        elif i % 5 == 0:
+            echo("Buzz")
+        else:
+            echo(i)
+        i := i + 1
+    back 0
