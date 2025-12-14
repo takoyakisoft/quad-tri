@@ -1,0 +1,8 @@
+func len(s: text) -> int:
+    back text_len(s)
+
+func at(s: text, idx: int) -> int:
+    back text_byte_at(s, idx)
+
+func eq(a: text, b: text) -> bool:
+    back a == b

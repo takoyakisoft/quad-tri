@@ -1,0 +1,8 @@
+func print(s: text) -> void:
+    sys_write(s)
+
+func println(s: text) -> void:
+    sys_writeln(s)
+
+func read_file(path: text) -> text:
+    back sys_read_file(path)

@@ -1,0 +1,89 @@
+type IntVec:
+    data: Addr<int>
+    len: int
+    cap: int
+
+impl IntVec:
+    func make(initial_cap: int) -> IntVec:
+        cell cap: int := initial_cap
+        when cap <= 0:
+            cap := 8
+        back IntVec {
+            data: alloc_int_array(cap),
+            len: 0,
+            cap: cap
+        }
+
+    func push(self, val: int) -> void:
+        when self.len == self.cap:
+            cell new_cap: int := self.cap * 2
+            cell new_data: Addr<int> := alloc_int_array(new_cap)
+            cell i: int := 0
+            loop 1==1:
+                when i == self.len:
+                    stop
+                set_int(new_data, i, get_int(self.data, i))
+                i := i + 1
+            self.data := new_data
+            self.cap := new_cap
+
+        set_int(self.data, self.len, val)
+        self.len := self.len + 1
+
+    func get(self, idx: int) -> int:
+        when idx < 0 || idx >= self.len:
+            sys_panic("index out of bounds")
+        back get_int(self.data, idx)
+
+    func set(self, idx: int, val: int) -> void:
+        when idx < 0 || idx >= self.len:
+            sys_panic("index out of bounds")
+        set_int(self.data, idx, val)
+
+    func len(self) -> int:
+        back self.len
+
+type TextVec:
+    data: Addr<text>
+    len: int
+    cap: int
+
+impl TextVec:
+    func make(initial_cap: int) -> TextVec:
+        cell cap: int := initial_cap
+        when cap <= 0:
+            cap := 8
+        back TextVec {
+            data: alloc_text_array(cap),
+            len: 0,
+            cap: cap
+        }
+
+    func push(self, val: text) -> void:
+        when self.len == self.cap:
+            cell new_cap: int := self.cap * 2
+            cell new_data: Addr<text> := alloc_text_array(new_cap)
+            cell i: int := 0
+            loop 1==1:
+                when i == self.len:
+                    stop
+                set_text(new_data, i, get_text(self.data, i))
+                i := i + 1
+            self.data := new_data
+            self.cap := new_cap
+
+        set_text(self.data, self.len, val)
+        self.len := self.len + 1
+
+    func get(self, idx: int) -> text:
+        when idx < 0 || idx >= self.len:
+            sys_panic("index out of bounds")
+        back get_text(self.data, idx)
+
+    func set(self, idx: int, val: text) -> void:
+        when idx < 0 || idx >= self.len:
+            sys_panic("index out of bounds")
+        set_text(self.data, idx, val)
+
+    func len(self) -> int:
+        back self.len
