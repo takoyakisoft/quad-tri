@@ -136,7 +136,6 @@ func main() -> int:
         .output()
         .expect("failed to run qtri build");
 
-    // Case 2: Accessing private field should fail
     if build_priv.status.success() {
         panic!(
             "Private field access succeeded unexpectedly:\nstdout:\n{}\nstderr:\n{}",
