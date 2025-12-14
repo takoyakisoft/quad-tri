@@ -3,7 +3,7 @@ def add(a: int, b: int) -> int:
 
 def main() -> int:
     var total: int := add(1, 2)
-    prn(total)
+    println(total)
     var swapped: int := add(b: 5, a: 4)
-    prn(swapped)
+    println(swapped)
     ret 0

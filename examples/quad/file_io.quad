@@ -1,0 +1,4 @@
+func main() -> int:
+    cell content: text := read_file("test.txt")
+    println(content)
+    back 0

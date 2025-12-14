@@ -1,15 +1,15 @@
 from "math"
 from "greeter"
 
-func main() -> intg:
+func main() -> int:
     greet("Quad modules")
 
-    vars sum: intg := add(2, 5)
-    echo("2 + 5 =")
-    echo(sum)
+    cell sum: int := add(2, 5)
+    println("2 + 5 =")
+    println(sum)
 
-    vars fact: intg := factorial(4)
-    echo("4! =")
-    echo(fact)
+    cell fact: int := factorial(4)
+    println("4! =")
+    println(fact)
 
     back 0

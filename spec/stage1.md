@@ -11,7 +11,7 @@ To move the Quad/Tri compiler toward Stage1 (compiled by Quad/Tri themselves), w
 4. **String manipulation**
    - Current `text` acts as a raw `char*`; slicing, concatenation, and per-character inspection are needed for lexing and parsing.
 5. **File I/O**
-   - Loading source files requires more than `echo`; we need reads in addition to writes.
+   - Loading source files requires more than `println`; we need reads in addition to writes.
 6. **Memory management**
    - Structs and dynamic arrays require heap allocation (`malloc`/`free`).
 

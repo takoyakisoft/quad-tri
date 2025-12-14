@@ -1,0 +1,11 @@
+type Big:
+    a: int
+    b: int
+    c: int
+
+func main() -> int:
+    cell obj: Big := Big{ a: 10, b: 20, c: 30 }
+    println(obj.a)
+    println(obj.b)
+    println(obj.c)
+    back 0

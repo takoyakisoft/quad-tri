@@ -1,0 +1,12 @@
+typ Big:
+    a: int
+    b: int
+    c: int
+
+
+def main() -> int:
+    var obj: Big := Big{ a: 10, b: 20, c: 30 }
+    println(obj.a)
+    println(obj.b)
+    println(obj.c)
+    ret 0

@@ -1,11 +1,11 @@
-func main() -> intg:
-    vars x: intg := 0
+func main() -> int:
+    cell x: int := 0
     loop x < 3:
-        echo("x=")
-        echo(x)
+        println("x=")
+        println(x)
         x := x + 1
     when x == 3:
-        echo("done")
+        println("done")
     else:
-        echo("ng")
+        println("ng")
     back 0

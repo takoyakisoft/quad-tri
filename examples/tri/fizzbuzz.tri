@@ -2,12 +2,12 @@ def main() -> int:
     var i: int := 1
     for i <= 100:
         iff i % 15 == 0:
-            prn("FizzBuzz")
+            println("FizzBuzz")
         elf i % 3 == 0:
-            prn("Fizz")
+            println("Fizz")
         elf i % 5 == 0:
-            prn("Buzz")
+            println("Buzz")
         els:
-            prn(i)
+            println(i)
         i := i + 1
     ret 0

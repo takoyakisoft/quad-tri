@@ -1,0 +1,43 @@
+enum Color:
+    Red
+    Green(int)
+    Blue(int, int)
+
+func main() -> int:
+    cell c: Color := Color::Red
+    
+    # Check Red (Tag 0, if sorted alpha 'Blue' is 0? 'Green' 1, 'Red' 2?)
+    # Wait, Tags are sorted alphabetically.
+    # Blue, Green, Red.
+    # So Red should be tag 2.
+    # But Case and EnumLit BOTH use alphabetical sort. So it should match.
+    
+    case c:
+       when Color::Red:
+           println(10)
+       when Color::Green(x):
+           println(x)
+       when Color::Blue(x, y):
+           println(x + y)
+    
+    # Check Green
+    c := Color::Green(20)
+    case c:
+       when Color::Red:
+           println(10)
+       when Color::Green(x):
+           println(x)
+       when Color::Blue(x, y):
+           println(x + y)
+
+    # Check Blue
+    c := Color::Blue(30, 40)
+    case c:
+       when Color::Red:
+           println(10)
+       when Color::Green(x):
+           println(x)
+       when Color::Blue(x, y):
+           println(x + y)
+        
+    back 0

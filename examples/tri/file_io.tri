@@ -1,0 +1,4 @@
+def main() -> int:
+    var content: text := read_file("test.txt")
+    println(content)
+    ret 0

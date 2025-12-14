@@ -1,28 +1,45 @@
 # Tri Syntax (Strict MVP)
 
 ## Keywords (3 letters)
-use, typ, def, let, var, iff, elf, els, for, ret, prn, brk, cnt, ovr
+use, typ, enm, cas, def, let, var, pub, prv, iff, elf, els, for, ret, brk, nxt, ovr
 
-Stage1 reserved keywords (including unimplemented): imp, new, slf, vec, psh, len, enm, cas, opn,
-red, wrt, cls, mem, del, yep, nop, die
+| Concept | Quad (4 letters) | Tri (3 letters) | Meaning |
+| --- | --- | --- | --- |
+| Public visibility | publ | pub | Public |
+| Private visibility | priv | prv | Private |
+| Immutable binding | bind | let | Immutable local variable |
+| Mutable binding | cell | var | Mutable local variable |
+| Continue | next | nxt | Loop continue |
+
+Stage1 reserved keywords (including unimplemented): imp, new, slf, vec, psh, opn,
+red, wrt, cls, mem, del, die
 
 - use: import (Quad: from)
 - typ: type/struct (Quad: type)
 - def: function (Quad: func)
-- let: immutable local (Quad: lock)
-- var: mutable local (Quad: vars)
+- let: immutable local (Quad: bind)
+- var: mutable local (Quad: cell)
 - iff/elf/els: if/elif/else (Quad: when/elif/else)
 - for: loop (Quad: loop)
 - ret: return (Quad: back)
-- prn: print (Quad: echo)
-- brk/cnt: break/continue (Quad: stop/next)
+- brk/nxt: break/continue (Quad: stop/next)
 - ovr: foreach marker (Quad: over) [optional]
 
-## Types (3 letters)
-int (i64), bol (i1), txt (ptr to C string), vod (void)
+## Enums and pattern matching
+- Declare with `enm Name:` followed by indented variants. Payload types appear in parentheses.
+- Match with `cas expr:` and variant patterns like `iff Name::Variant(x, y):` within the block.
+
+## Types
+Types are identifiers (not reserved words). Canonical spellings are: int (i64), bool (i1), text (ptr to C string), void.
+
+- Text operators: `text + text -> text`, `text == text -> bool`, `text != text -> bool`.
+- Ordering comparisons (`<`, `<=`, `>`, `>=`) are only defined for `int`.
+
+- Fixed-length arrays use `[len]type` syntax and can nest (e.g. `[2][3]int`).
 
 ## Structs
 - Define with `typ Nam { fld: typ, ... }` using braces.
+- Each field may be prefixed with `pub` (public) or `prv` (private); omit for private.
 - Instantiate with `Nam{ fld: expr, ... }` and provide every field once.
 - Access fields via `expr.fld` and assign with `foo.fld := expr`.
 - Structs may be returned from functions.

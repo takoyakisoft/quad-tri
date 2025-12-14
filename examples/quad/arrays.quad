@@ -1,0 +1,10 @@
+func main() -> int:
+    cell arr: [10]int := [10, 20, 30]
+    println(arr[0])
+    println(arr[1])
+    println(arr[2])
+    
+    arr[1] := 99
+    println(arr[1])
+    
+    back 0

@@ -1,0 +1,20 @@
+def main() -> int:
+    var s1: text := "Hello"
+    var s2: text := " World"
+
+    # Test Concat
+    var s3: text := s1 + s2
+    println(s3) # Should be "Hello World"
+
+    # Test Eq
+    iff s1 == "Hello":
+        println(1)
+    els:
+        println(0)
+
+    iff s1 == s2:
+        println(0)
+    els:
+        println(2)
+
+    ret 0

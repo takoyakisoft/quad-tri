@@ -1,0 +1,5 @@
+func main() -> int:
+    cell r: Result<int,text> := Result<int,text>::Err("div by zero")
+    cell x: int := r.expect("expected need message")
+    println(x)
+    back 0

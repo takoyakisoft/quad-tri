@@ -1,9 +1,9 @@
-func add(a: intg, b: intg) -> intg:
+func add(a: int, b: int) -> int:
     back a + b
 
-func main() -> intg:
-    vars total: intg := add(1, 2)
-    echo(total)
-    vars swapped: intg := add(b: 5, a: 4)
-    echo(swapped)
+func main() -> int:
+    cell total: int := add(1, 2)
+    println(total)
+    cell swapped: int := add(b: 5, a: 4)
+    println(swapped)
     back 0

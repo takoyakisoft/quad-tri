@@ -1,0 +1,51 @@
+{
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "type": "lldb",  // CodeLLDB拡張機能を入れている場合
+            "request": "launch",
+            "name": "Debug qtri (Lex)",
+            "cargo": {
+                "args": [
+                    "build",
+                    "--bin=qtri",
+                    "--package=qtri"
+                ],
+                "filter": {
+                    "name": "qtri",
+                    "kind": "bin"
+                }
+            },
+            "args": [
+                "lex",
+                "--lang", "quad",
+                "${workspaceFolder}/examples/quad/hello.quad"
+            ],
+            "cwd": "${workspaceFolder}"
+        },
+        {
+            "type": "lldb",
+            "request": "launch",
+            "name": "Debug qtri (Build Example)",
+            "cargo": {
+                "args": [
+                    "build",
+                    "--bin=qtri",
+                    "--package=qtri"
+                ],
+                "filter": {
+                    "name": "qtri",
+                    "kind": "bin"
+                }
+            },
+            "args": [
+                "build",
+                "--lang", "quad",
+                "${workspaceFolder}/examples/quad/hello.quad",
+                "-o",
+                "${workspaceFolder}/target/debug/hello_output.exe"
+            ],
+            "cwd": "${workspaceFolder}"
+        }
+    ]
+}
