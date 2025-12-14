@@ -12,12 +12,9 @@ pub enum Kw {
     Struct,
     Fn,
     Impl,
-    Make,
     Self_,
     Pub,
     Priv,
-    List,
-    Push,
     Enum,
     Case,
     Let,
@@ -27,13 +24,7 @@ pub enum Kw {
     Else,
     Loop,
     Return,
-    Open,
-    Read,
-    Write,
-    Close,
-    Box,
-    Drop,
-    Panic,
+
     Break,
     Continue,
     In,
@@ -122,11 +113,7 @@ impl std::error::Error for LexError {}
 
 fn err(file_id: usize, line: usize, col: usize, msg: impl Into<String>) -> LexError {
     LexError {
-        span: Span {
-            file_id,
-            line,
-            col,
-        },
+        span: Span { file_id, line, col },
         msg: msg.into(),
     }
 }
@@ -386,7 +373,14 @@ pub fn lex_str(lang: Language, src: &str, file_id: usize) -> Result<Vec<Token>, 
                 '&' => TokKind::Amp,
                 '^' => TokKind::Caret,
                 '|' => TokKind::Pipe,
-                _ => return Err(err(file_id, line_no, col, format!("unexpected char: {ch:?}"))),
+                _ => {
+                    return Err(err(
+                        file_id,
+                        line_no,
+                        col,
+                        format!("unexpected char: {ch:?}"),
+                    ));
+                }
             };
             out.push(Token {
                 kind,

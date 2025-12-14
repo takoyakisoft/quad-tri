@@ -1,0 +1,18 @@
+from "std/vec"
+
+func args() -> TextVec:
+    cell n: int := args_count()
+    cell v: TextVec := TextVec.make(n)
+    cell i: int := 0
+    loop 1==1:
+        when i == n:
+            stop
+        v.push(arg_get(i))
+        i := i + 1
+    back v
+
+func exit(code: int) -> void:
+    sys_exit(code)
+
+func panic(msg: text) -> void:
+    sys_panic(msg)

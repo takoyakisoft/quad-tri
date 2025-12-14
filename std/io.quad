@@ -1,0 +1,5 @@
+func print(s: text) -> void:
+    sys_write(s)
+
+func println(s: text) -> void:
+    sys_writeln(s)

@@ -1,0 +1,14 @@
+# Explicit memory allocation
+# sys_alloc(val) -> int (pointer)
+# sys_dealloc(ptr, size) or sys_dealloc(managed_obj)
+
+# alloc_bytes(size) -> int (pointer to raw bytes)
+# Note: alloc_bytes is a built-in intrinsic for now to avoid size calculation issues.
+
+func alloc_bytes_safe(size: int) -> int:
+    when size < 0:
+        back 0
+    back alloc_bytes(size)
+
+func dealloc(ptr: int, size: int) -> void:
+    sys_dealloc(ptr, size)

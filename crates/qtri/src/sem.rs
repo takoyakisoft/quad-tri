@@ -11,6 +11,8 @@ pub enum Ty {
     Struct(String),
     Enum(String),
     Array { elem: Box<Ty> },
+
+    // Heap / pointer-like value (Quad: Addr<T>, Tri: Ptr<T>)
     Ref(Box<Ty>),
 }
 
@@ -210,12 +212,6 @@ pub fn check(prog: &LinkedProgram) -> Result<SemInfo, SemError> {
             if let Ty::Enum(ref name) = fty {
                 ensure_intrinsic_enum(name, f.span, &structs, &mut enums)?;
             }
-            if matches!(fty, Ty::Struct(_)) {
-                return Err(serr(
-                    f.span,
-                    "struct fields of struct type are not supported yet",
-                ));
-            }
             fields.push((f.name.clone(), fty, f.vis));
         }
         structs.insert(
@@ -378,17 +374,24 @@ pub fn parse_ty(
             });
         }
 
-        if let Some(rest) = src.strip_prefix("ref<") {
+        // Quad pointer type
+        if let Some(rest) = src.strip_prefix("Addr<") {
             let end = rest.rfind('>')?;
-            let (inner_str, _) = rest.split_at(end);
+            let (inner_str, tail) = rest.split_at(end);
+            if tail != ">" {
+                return None;
+            }
             let inner = parse(inner_str, structs, enums)?;
             return Some(Ty::Ref(Box::new(inner)));
         }
 
-        // Tri uses `ptr<T>` as the surface syntax, but internally we normalize it to `ref<T>`.
-        if let Some(rest) = src.strip_prefix("ptr<") {
+        // Tri pointer type
+        if let Some(rest) = src.strip_prefix("Ptr<") {
             let end = rest.rfind('>')?;
-            let (inner_str, _) = rest.split_at(end);
+            let (inner_str, tail) = rest.split_at(end);
+            if tail != ">" {
+                return None;
+            }
             let inner = parse(inner_str, structs, enums)?;
             return Some(Ty::Ref(Box::new(inner)));
         }
@@ -676,9 +679,8 @@ fn check_stmt(
                     let e = expr
                         .as_ref()
                         .ok_or_else(|| serr(*span, "non-void function must return a value"))?;
-                    let ety = check_expr(
-                        e, ret_ty, fns, methods, scopes, enums, structs, module_id,
-                    )?;
+                    let ety =
+                        check_expr(e, ret_ty, fns, methods, scopes, enums, structs, module_id)?;
                     if ety != *ret_ty {
                         return Err(serr(*span, "return type mismatch"));
                     }
@@ -687,12 +689,14 @@ fn check_stmt(
             Ok(true)
         }
         Stmt::If {
-            arms, else_body, ..
+            arms,
+            else_body,
+            span,
         } => {
+            let _ = span;
+            let mut any_ret = false;
             for (c, b) in arms {
-                let cty = check_expr(
-                    c, ret_ty, fns, methods, scopes, enums, structs, module_id,
-                )?;
+                let cty = check_expr(c, ret_ty, fns, methods, scopes, enums, structs, module_id)?;
                 if cty != Ty::Bool {
                     return Err(serr(c.span(), "when/elif condition must be bool"));
                 }
@@ -704,7 +708,7 @@ fn check_stmt(
                     )?;
                 }
                 scopes.pop();
-                let _ = local_ret;
+                any_ret |= local_ret;
             }
             if let Some(b) = else_body {
                 scopes.push(HashMap::new());
@@ -715,9 +719,9 @@ fn check_stmt(
                     )?;
                 }
                 scopes.pop();
-                let _ = local_ret;
+                any_ret |= local_ret;
             }
-            Ok(false)
+            Ok(any_ret)
         }
         Stmt::Case {
             scrutinee,
@@ -795,11 +799,12 @@ fn check_stmt(
             }
             // *loop_depth -= 1; // Removed.
 
-            let _ = local_ret; // Case doesn't guarantee return unless exhaustive & all arms return.
-            // Simplification: ignore return for now.
-            Ok(false)
+            // For MVP, we only need to know whether a `back` appears anywhere inside.
+            // (We do not yet do full control-flow / exhaustiveness analysis.)
+            Ok(local_ret)
         }
-        Stmt::While { cond, body, .. } => {
+        Stmt::While { cond, body, span } => {
+            let _ = span;
             let cty = check_expr(
                 cond, ret_ty, fns, methods, scopes, enums, structs, module_id,
             )?;
@@ -816,8 +821,103 @@ fn check_stmt(
             }
             scopes.pop();
             *loop_depth -= 1;
-            let _ = local_ret;
-            Ok(false)
+            Ok(local_ret)
+        }
+        Stmt::Foreach {
+            name,
+            ty,
+            iter,
+            body,
+            span,
+        } => {
+            let loop_var_ty = parse_ty(ty, structs, &*enums)
+                .ok_or_else(|| serr(*span, format!("unknown type: {ty}")))?;
+            if let Ty::Enum(ref enum_name) = loop_var_ty {
+                ensure_intrinsic_enum(enum_name, *span, structs, enums)?;
+            }
+
+            let iter_ty = check_expr(
+                iter, ret_ty, fns, methods, scopes, enums, structs, module_id,
+            )?;
+
+            let iter_struct = match iter_ty {
+                Ty::Struct(n) => n,
+                Ty::Ref(inner) => match *inner {
+                    Ty::Struct(n) => n,
+                    _ => {
+                        return Err(serr(
+                            iter.span(),
+                            "foreach iterator must be a struct (or Addr<struct>)",
+                        ));
+                    }
+                },
+                _ => {
+                    return Err(serr(
+                        iter.span(),
+                        "foreach iterator must be a struct (or Addr<struct>)",
+                    ));
+                }
+            };
+
+            let next_sig = methods
+                .get(&iter_struct)
+                .and_then(|m| m.get("next"))
+                .ok_or_else(|| serr(iter.span(), "foreach iterator requires next() method"))?;
+            if !next_sig.has_self {
+                return Err(serr(iter.span(), "next() must be a method (requires self)"));
+            }
+
+            let next_ret = match &next_sig.ret {
+                Ty::Enum(n) => n.as_str(),
+                _ => {
+                    return Err(serr(
+                        iter.span(),
+                        "next() must return Option<T> for foreach",
+                    ));
+                }
+            };
+            ensure_intrinsic_enum(next_ret, iter.span(), structs, enums)?;
+
+            let (base, args) = parse_intrinsic_enum_name(next_ret)
+                .ok_or_else(|| serr(iter.span(), "next() must return Option<T>"))?;
+            if base != "Option" || args.len() != 1 {
+                return Err(serr(iter.span(), "next() must return Option<T>"));
+            }
+
+            let inner_ty = parse_ty(args[0], structs, &*enums)
+                .ok_or_else(|| serr(iter.span(), "unknown Option<T> inner type"))?;
+            if let Ty::Enum(ref enum_name) = inner_ty {
+                ensure_intrinsic_enum(enum_name, iter.span(), structs, enums)?;
+            }
+            if inner_ty != loop_var_ty {
+                return Err(serr(
+                    *span,
+                    format!(
+                        "foreach type mismatch: next() yields {:?} but loop variable is {:?}",
+                        inner_ty, loop_var_ty
+                    ),
+                ));
+            }
+
+            *loop_depth += 1;
+            scopes.push(HashMap::new());
+            scopes.last_mut().unwrap().insert(
+                name.clone(),
+                VarInfo {
+                    ty: loop_var_ty,
+                    mutable: false,
+                },
+            );
+
+            let mut local_ret = false;
+            for s in body {
+                local_ret |= check_stmt(
+                    s, ret_ty, fns, methods, enums, structs, scopes, loop_depth, module_id,
+                )?;
+            }
+            scopes.pop();
+            *loop_depth -= 1;
+            Ok(local_ret)
         }
         Stmt::Break { span } => {
             if *loop_depth == 0 {
@@ -867,38 +967,6 @@ fn check_expr(
                 }
             }
             Err(serr(*sp, format!("unknown identifier: {name}")))
-        }
-        Expr::StructLit { name, fields, span } => {
-            let sinfo = structs
-                .get(name)
-                .ok_or_else(|| serr(*span, format!("unknown struct: {name}")))?;
-            let mut seen = HashSet::new();
-            for (fname, expr, fspan) in fields {
-                let (fty, vis) = sinfo
-                    .fields
-                    .iter()
-                    .find(|(n, _, _)| n == fname)
-                    .map(|(_, t, v)| (t.clone(), *v))
-                    .ok_or_else(|| serr(*fspan, format!("unknown field: {fname}")))?;
-
-                if vis == Visibility::Private && sinfo.module_id != module_id {
-                    return Err(serr(*fspan, format!("field {fname} is private")));
-                }
-
-                let ety = check_expr(
-                    expr, fn_ret_ty, fns, methods, scopes, enums, structs, module_id,
-                )?;
-                if ety != fty {
-                    return Err(serr(*fspan, "field type mismatch"));
-                }
-                if !seen.insert(fname) {
-                    return Err(serr(*fspan, format!("duplicate field: {fname}")));
-                }
-            }
-            if seen.len() != sinfo.fields.len() {
-                return Err(serr(*span, "missing field in struct literal"));
-            }
-            Ok(Ty::Struct(name.clone()))
         }
         Expr::EnumLit {
             enum_name,
@@ -1167,6 +1235,86 @@ fn check_expr(
                 }
             }
 
+            // Struct construction via parens: `TypeName(...)`
+            // Resolved in semantics so the parser stays type-agnostic.
+            if let Expr::Ident(type_name, _) = &**callee {
+                if let Some(sinfo) = structs.get(type_name) {
+                    if args.iter().all(|a| matches!(a, Arg::Pos(_))) {
+                        if args.len() != sinfo.fields.len() {
+                            return Err(serr(
+                                *span,
+                                format!(
+                                    "struct {type_name} expects {} args, got {}",
+                                    sinfo.fields.len(),
+                                    args.len()
+                                ),
+                            ));
+                        }
+                        for (i, a) in args.iter().enumerate() {
+                            let Arg::Pos(expr) = a else { unreachable!() };
+                            let (fname, fty, vis) = &sinfo.fields[i];
+
+                            if *vis == Visibility::Private && sinfo.module_id != module_id {
+                                return Err(serr(expr.span(), format!("field {fname} is private")));
+                            }
+
+                            let ety = check_expr(
+                                expr, fn_ret_ty, fns, methods, scopes, enums, structs, module_id,
+                            )?;
+                            if ety != fty.clone() {
+                                return Err(serr(expr.span(), "field type mismatch"));
+                            }
+                        }
+                        return Ok(Ty::Struct(type_name.clone()));
+                    }
+
+                    if args.iter().all(|a| matches!(a, Arg::Named { .. })) {
+                        let mut seen = HashSet::new();
+
+                        for a in args {
+                            let Arg::Named {
+                                name,
+                                expr,
+                                span: nspan,
+                            } = a
+                            else {
+                                unreachable!();
+                            };
+                            let (fty, vis) = sinfo
+                                .fields
+                                .iter()
+                                .find(|(n, _, _)| n == name)
+                                .map(|(_, t, v)| (t.clone(), *v))
+                                .ok_or_else(|| serr(*nspan, format!("unknown field: {name}")))?;
+
+                            if vis == Visibility::Private && sinfo.module_id != module_id {
+                                return Err(serr(*nspan, format!("field {name} is private")));
+                            }
+
+                            let ety = check_expr(
+                                expr, fn_ret_ty, fns, methods, scopes, enums, structs, module_id,
+                            )?;
+                            if ety != fty {
+                                return Err(serr(*nspan, "field type mismatch"));
+                            }
+                            if !seen.insert(name) {
+                                return Err(serr(*nspan, format!("duplicate field: {name}")));
+                            }
+                        }
+
+                        if seen.len() != sinfo.fields.len() {
+                            return Err(serr(*span, "missing field in struct constructor"));
+                        }
+                        return Ok(Ty::Struct(type_name.clone()));
+                    }
+
+                    return Err(serr(
+                        *span,
+                        "struct construction args must be either all positional or all named",
+                    ));
+                }
+            }
+
             if let Expr::Field {
                 base,
                 field,
@@ -1219,59 +1367,66 @@ fn check_expr(
 
                     if is_unwrap || is_expect {
                         let enum_name = match &recv_ty {
-                            Ty::Enum(n) => n,
+                            Ty::Enum(n) => Some(n.as_str()),
                             Ty::Ref(inner) => match &**inner {
-                                Ty::Enum(n) => n,
-                                _ => "",
+                                Ty::Enum(n) => Some(n.as_str()),
+                                _ => None,
                             },
-                            _ => "",
+                            _ => None,
                         };
 
-                        if let Some((base_name, type_args)) = parse_intrinsic_enum_name(enum_name) {
-                            // args validation
-                            if is_unwrap {
-                                if !args.is_empty() {
-                                    return Err(serr(*span, "unwrap takes no args"));
-                                }
-                            } else {
-                                if args.len() != 1 {
-                                    return Err(serr(*span, "expect takes exactly 1 arg"));
-                                }
-                                match &args[0] {
-                                    Arg::Pos(msg) => {
-                                        let mt = check_expr(
-                                            msg, fn_ret_ty, fns, methods, scopes, enums, structs,
-                                            module_id,
-                                        )?;
-                                        if mt != Ty::Text {
+                        if let Some(enum_name) = enum_name {
+                            if let Some((base_name, type_args)) =
+                                parse_intrinsic_enum_name(enum_name)
+                            {
+                                // args validation
+                                if is_unwrap {
+                                    if !args.is_empty() {
+                                        return Err(serr(*span, "unwrap takes no args"));
+                                    }
+                                } else {
+                                    if args.len() != 1 {
+                                        return Err(serr(*span, "expect takes exactly 1 arg"));
+                                    }
+                                    match &args[0] {
+                                        Arg::Pos(msg) => {
+                                            let mt = check_expr(
+                                                msg, fn_ret_ty, fns, methods, scopes, enums,
+                                                structs, module_id,
+                                            )?;
+                                            if mt != Ty::Text {
+                                                return Err(serr(
+                                                    msg.span(),
+                                                    "expect(msg) requires text",
+                                                ));
+                                            }
+                                        }
+                                        Arg::Named { .. } => {
                                             return Err(serr(
-                                                msg.span(),
-                                                "expect(msg) requires text",
+                                                *span,
+                                                "expect does not take named args",
                                             ));
                                         }
                                     }
-                                    Arg::Named { .. } => {
-                                        return Err(serr(*span, "expect does not take named args"));
-                                    }
                                 }
-                            }
 
-                            let ok_ty_str = match base_name {
-                                "Option" => type_args[0],
-                                "Result" => type_args[0],
-                                _ => {
-                                    return Err(serr(
-                                        *field_span,
-                                        "unwrap/expect is only supported on Option/Result",
-                                    ));
+                                let ok_ty_str = match base_name {
+                                    "Option" => type_args[0],
+                                    "Result" => type_args[0],
+                                    _ => {
+                                        return Err(serr(
+                                            *field_span,
+                                            "unwrap/expect is only supported on Option/Result",
+                                        ));
+                                    }
+                                };
+                                let ok_ty = parse_ty(ok_ty_str, structs, &*enums)
+                                    .ok_or_else(|| serr(*field_span, "unknown inner type"))?;
+                                if let Ty::Enum(inner) = &ok_ty {
+                                    ensure_intrinsic_enum(inner, *field_span, structs, enums)?;
                                 }
-                            };
-                            let ok_ty = parse_ty(ok_ty_str, structs, &*enums)
-                                .ok_or_else(|| serr(*field_span, "unknown inner type"))?;
-                            if let Ty::Enum(inner) = &ok_ty {
-                                ensure_intrinsic_enum(inner, *field_span, structs, enums)?;
+                                return Ok(ok_ty);
                             }
-                            return Ok(ok_ty);
                         }
                     }
 
@@ -1316,7 +1471,7 @@ fn check_expr(
                 }
             } else if let Expr::Ident(fname, sp) = &**callee {
                 // Builtins with type-dependent behavior
-                if fname == "heap" {
+                if fname == "heap" || fname == "mem" {
                     if args.len() != 1 {
                         return Err(serr(*span, "heap takes exactly 1 arg"));
                     }
@@ -1333,7 +1488,7 @@ fn check_expr(
                         return Err(serr(expr.span(), "cannot heap-allocate void"));
                     }
                     Ok(Ty::Ref(Box::new(inner)))
-                } else if fname == "free" {
+                } else if fname == "free" || fname == "del" {
                     if args.len() != 1 {
                         return Err(serr(*span, "free takes exactly 1 arg"));
                     }
@@ -1348,7 +1503,7 @@ fn check_expr(
                     )?;
                     match t {
                         Ty::Ref(_) | Ty::Text | Ty::Array { .. } => Ok(Ty::Void),
-                        _ => Err(serr(expr.span(), "free expects ref<T>, text, or array")),
+                        _ => Err(serr(expr.span(), "free expects Addr<T>, text, or array")),
                     }
                 } else if fname == "deref" {
                     if args.len() != 1 {
@@ -1365,8 +1520,515 @@ fn check_expr(
                     )?;
                     match t {
                         Ty::Ref(inner) => Ok(*inner),
-                        _ => Err(serr(expr.span(), "deref expects ref<T>")),
+                        _ => Err(serr(expr.span(), "deref expects Addr<T>")),
                     }
+                } else if fname == "sys_write" || fname == "sys_writeln" {
+                    if args.len() != 1 {
+                        return Err(serr(*span, format!("{fname} takes exactly 1 arg")));
+                    }
+                    let expr = match &args[0] {
+                        Arg::Pos(e) => e,
+                        Arg::Named { .. } => {
+                            return Err(serr(*span, format!("{fname} does not take named args")));
+                        }
+                    };
+                    let t = check_expr(
+                        expr, fn_ret_ty, fns, methods, scopes, enums, structs, module_id,
+                    )?;
+                    if t != Ty::Text {
+                        return Err(serr(expr.span(), format!("{fname} expects text")));
+                    }
+                    Ok(Ty::Void)
+                } else if fname == "sys_read_file" {
+                    if args.len() != 1 {
+                        return Err(serr(*span, "sys_read_file takes exactly 1 arg"));
+                    }
+                    let expr = match &args[0] {
+                        Arg::Pos(e) => e,
+                        Arg::Named { .. } => {
+                            return Err(serr(*span, "sys_read_file does not take named args"));
+                        }
+                    };
+                    let t = check_expr(
+                        expr, fn_ret_ty, fns, methods, scopes, enums, structs, module_id,
+                    )?;
+                    if t != Ty::Text {
+                        return Err(serr(expr.span(), "sys_read_file expects text"));
+                    }
+                    Ok(Ty::Text)
+                } else if fname == "sys_panic" {
+                    if args.len() != 1 {
+                        return Err(serr(*span, "sys_panic takes exactly 1 arg"));
+                    }
+                    let expr = match &args[0] {
+                        Arg::Pos(e) => e,
+                        Arg::Named { .. } => {
+                            return Err(serr(*span, "sys_panic does not take named args"));
+                        }
+                    };
+                    let t = check_expr(
+                        expr, fn_ret_ty, fns, methods, scopes, enums, structs, module_id,
+                    )?;
+                    if t != Ty::Text {
+                        return Err(serr(expr.span(), "sys_panic expects text"));
+                    }
+                    Ok(Ty::Void)
+                } else if fname == "sys_exit" {
+                    if args.len() != 1 {
+                        return Err(serr(*span, "sys_exit takes exactly 1 arg"));
+                    }
+                    let expr = match &args[0] {
+                        Arg::Pos(e) => e,
+                        Arg::Named { .. } => {
+                            return Err(serr(*span, "sys_exit does not take named args"));
+                        }
+                    };
+                    let t = check_expr(
+                        expr, fn_ret_ty, fns, methods, scopes, enums, structs, module_id,
+                    )?;
+                    if t != Ty::Int {
+                        return Err(serr(expr.span(), "sys_exit expects int"));
+                    }
+                    Ok(Ty::Void)
+                } else if fname == "args_count" {
+                    if !args.is_empty() {
+                        return Err(serr(*span, "args_count takes no args"));
+                    }
+                    Ok(Ty::Int)
+                } else if fname == "arg_get" {
+                    if args.len() != 1 {
+                        return Err(serr(*span, "arg_get takes exactly 1 arg"));
+                    }
+                    let expr = match &args[0] {
+                        Arg::Pos(e) => e,
+                        Arg::Named { .. } => {
+                            return Err(serr(*span, "arg_get does not take named args"));
+                        }
+                    };
+                    let t = check_expr(
+                        expr, fn_ret_ty, fns, methods, scopes, enums, structs, module_id,
+                    )?;
+                    if t != Ty::Int {
+                        return Err(serr(expr.span(), "arg_get expects int"));
+                    }
+                    Ok(Ty::Text)
+                } else if fname == "alloc_bytes" {
+                    if args.len() != 1 {
+                        return Err(serr(*span, "alloc_bytes takes exactly 1 arg"));
+                    }
+                    let expr = match &args[0] {
+                        Arg::Pos(e) => e,
+                        Arg::Named { .. } => {
+                            return Err(serr(*span, "alloc_bytes does not take named args"));
+                        }
+                    };
+                    let t = check_expr(
+                        expr, fn_ret_ty, fns, methods, scopes, enums, structs, module_id,
+                    )?;
+                    if t != Ty::Int {
+                        return Err(serr(expr.span(), "alloc_bytes expects int"));
+                    }
+                    Ok(Ty::Int)
+                } else if fname == "sys_dealloc" {
+                    match args.len() {
+                        1 => {
+                            let expr = match &args[0] {
+                                Arg::Pos(e) => e,
+                                Arg::Named { .. } => {
+                                    return Err(serr(
+                                        *span,
+                                        "sys_dealloc does not take named args",
+                                    ));
+                                }
+                            };
+                            let t = check_expr(
+                                expr, fn_ret_ty, fns, methods, scopes, enums, structs, module_id,
+                            )?;
+                            match t {
+                                Ty::Ref(_) | Ty::Text | Ty::Array { .. } => Ok(Ty::Void),
+                                _ => Err(serr(expr.span(), "sys_dealloc expects ptr-like value")),
+                            }
+                        }
+                        2 => {
+                            let p_expr = match &args[0] {
+                                Arg::Pos(e) => e,
+                                Arg::Named { .. } => {
+                                    return Err(serr(
+                                        *span,
+                                        "sys_dealloc does not take named args",
+                                    ));
+                                }
+                            };
+                            let s_expr = match &args[1] {
+                                Arg::Pos(e) => e,
+                                Arg::Named { .. } => {
+                                    return Err(serr(
+                                        *span,
+                                        "sys_dealloc does not take named args",
+                                    ));
+                                }
+                            };
+                            let pt = check_expr(
+                                p_expr, fn_ret_ty, fns, methods, scopes, enums, structs, module_id,
+                            )?;
+                            let st = check_expr(
+                                s_expr, fn_ret_ty, fns, methods, scopes, enums, structs, module_id,
+                            )?;
+                            if pt != Ty::Int || st != Ty::Int {
+                                return Err(serr(
+                                    *span,
+                                    "sys_dealloc(ptr, size) expects (int, int)",
+                                ));
+                            }
+                            Ok(Ty::Void)
+                        }
+                        _ => Err(serr(
+                            *span,
+                            "sys_dealloc takes either 1 (managed) or 2 (ptr, size) args",
+                        )),
+                    }
+                } else if fname == "ptr_get_int" {
+                    if args.len() != 2 {
+                        return Err(serr(*span, "ptr_get_int takes exactly 2 args"));
+                    }
+                    let p_expr = match &args[0] {
+                        Arg::Pos(e) => e,
+                        Arg::Named { .. } => {
+                            return Err(serr(*span, "ptr_get_int does not take named args"));
+                        }
+                    };
+                    let i_expr = match &args[1] {
+                        Arg::Pos(e) => e,
+                        Arg::Named { .. } => {
+                            return Err(serr(*span, "ptr_get_int does not take named args"));
+                        }
+                    };
+                    let pt = check_expr(
+                        p_expr, fn_ret_ty, fns, methods, scopes, enums, structs, module_id,
+                    )?;
+                    let it = check_expr(
+                        i_expr, fn_ret_ty, fns, methods, scopes, enums, structs, module_id,
+                    )?;
+                    if pt != Ty::Int || it != Ty::Int {
+                        return Err(serr(*span, "ptr_get_int expects (int, int)"));
+                    }
+                    Ok(Ty::Int)
+                } else if fname == "ptr_set_int" {
+                    if args.len() != 3 {
+                        return Err(serr(*span, "ptr_set_int takes exactly 3 args"));
+                    }
+                    let p_expr = match &args[0] {
+                        Arg::Pos(e) => e,
+                        Arg::Named { .. } => {
+                            return Err(serr(*span, "ptr_set_int does not take named args"));
+                        }
+                    };
+                    let i_expr = match &args[1] {
+                        Arg::Pos(e) => e,
+                        Arg::Named { .. } => {
+                            return Err(serr(*span, "ptr_set_int does not take named args"));
+                        }
+                    };
+                    let v_expr = match &args[2] {
+                        Arg::Pos(e) => e,
+                        Arg::Named { .. } => {
+                            return Err(serr(*span, "ptr_set_int does not take named args"));
+                        }
+                    };
+                    let pt = check_expr(
+                        p_expr, fn_ret_ty, fns, methods, scopes, enums, structs, module_id,
+                    )?;
+                    let it = check_expr(
+                        i_expr, fn_ret_ty, fns, methods, scopes, enums, structs, module_id,
+                    )?;
+                    let vt = check_expr(
+                        v_expr, fn_ret_ty, fns, methods, scopes, enums, structs, module_id,
+                    )?;
+                    if pt != Ty::Int || it != Ty::Int || vt != Ty::Int {
+                        return Err(serr(*span, "ptr_set_int expects (int, int, int)"));
+                    }
+                    Ok(Ty::Void)
+                } else if fname == "ptr_get_text" {
+                    if args.len() != 2 {
+                        return Err(serr(*span, "ptr_get_text takes exactly 2 args"));
+                    }
+                    let p_expr = match &args[0] {
+                        Arg::Pos(e) => e,
+                        Arg::Named { .. } => {
+                            return Err(serr(*span, "ptr_get_text does not take named args"));
+                        }
+                    };
+                    let i_expr = match &args[1] {
+                        Arg::Pos(e) => e,
+                        Arg::Named { .. } => {
+                            return Err(serr(*span, "ptr_get_text does not take named args"));
+                        }
+                    };
+                    let pt = check_expr(
+                        p_expr, fn_ret_ty, fns, methods, scopes, enums, structs, module_id,
+                    )?;
+                    let it = check_expr(
+                        i_expr, fn_ret_ty, fns, methods, scopes, enums, structs, module_id,
+                    )?;
+                    if pt != Ty::Int || it != Ty::Int {
+                        return Err(serr(*span, "ptr_get_text expects (int, int)"));
+                    }
+                    Ok(Ty::Text)
+                } else if fname == "ptr_set_text" {
+                    if args.len() != 3 {
+                        return Err(serr(*span, "ptr_set_text takes exactly 3 args"));
+                    }
+                    let p_expr = match &args[0] {
+                        Arg::Pos(e) => e,
+                        Arg::Named { .. } => {
+                            return Err(serr(*span, "ptr_set_text does not take named args"));
+                        }
+                    };
+                    let i_expr = match &args[1] {
+                        Arg::Pos(e) => e,
+                        Arg::Named { .. } => {
+                            return Err(serr(*span, "ptr_set_text does not take named args"));
+                        }
+                    };
+                    let v_expr = match &args[2] {
+                        Arg::Pos(e) => e,
+                        Arg::Named { .. } => {
+                            return Err(serr(*span, "ptr_set_text does not take named args"));
+                        }
+                    };
+                    let pt = check_expr(
+                        p_expr, fn_ret_ty, fns, methods, scopes, enums, structs, module_id,
+                    )?;
+                    let it = check_expr(
+                        i_expr, fn_ret_ty, fns, methods, scopes, enums, structs, module_id,
+                    )?;
+                    let vt = check_expr(
+                        v_expr, fn_ret_ty, fns, methods, scopes, enums, structs, module_id,
+                    )?;
+                    if pt != Ty::Int || it != Ty::Int || vt != Ty::Text {
+                        return Err(serr(*span, "ptr_set_text expects (int, int, text)"));
+                    }
+                    Ok(Ty::Void)
+                } else if fname == "alloc_int_array" {
+                    if args.len() != 1 {
+                        return Err(serr(*span, "alloc_int_array takes exactly 1 arg"));
+                    }
+                    let expr = match &args[0] {
+                        Arg::Pos(e) => e,
+                        Arg::Named { .. } => {
+                            return Err(serr(*span, "alloc_int_array does not take named args"));
+                        }
+                    };
+                    let t = check_expr(
+                        expr, fn_ret_ty, fns, methods, scopes, enums, structs, module_id,
+                    )?;
+                    if t != Ty::Int {
+                        return Err(serr(expr.span(), "alloc_int_array expects int"));
+                    }
+                    Ok(Ty::Ref(Box::new(Ty::Int)))
+                } else if fname == "alloc_text_array" {
+                    if args.len() != 1 {
+                        return Err(serr(*span, "alloc_text_array takes exactly 1 arg"));
+                    }
+                    let expr = match &args[0] {
+                        Arg::Pos(e) => e,
+                        Arg::Named { .. } => {
+                            return Err(serr(*span, "alloc_text_array does not take named args"));
+                        }
+                    };
+                    let t = check_expr(
+                        expr, fn_ret_ty, fns, methods, scopes, enums, structs, module_id,
+                    )?;
+                    if t != Ty::Int {
+                        return Err(serr(expr.span(), "alloc_text_array expects int"));
+                    }
+                    Ok(Ty::Ref(Box::new(Ty::Text)))
+                } else if fname == "itoa_native" {
+                    if args.len() != 1 {
+                        return Err(serr(*span, "itoa_native takes exactly 1 arg"));
+                    }
+                    let expr = match &args[0] {
+                        Arg::Pos(e) => e,
+                        Arg::Named { .. } => {
+                            return Err(serr(*span, "itoa_native does not take named args"));
+                        }
+                    };
+                    let t = check_expr(
+                        expr, fn_ret_ty, fns, methods, scopes, enums, structs, module_id,
+                    )?;
+                    if t != Ty::Int {
+                        return Err(serr(expr.span(), "itoa_native expects int"));
+                    }
+                    Ok(Ty::Text)
+                } else if fname == "atoi_native" {
+                    if args.len() != 2 {
+                        return Err(serr(*span, "atoi_native takes exactly 2 args"));
+                    }
+                    let s_expr = match &args[0] {
+                        Arg::Pos(e) => e,
+                        Arg::Named { .. } => {
+                            return Err(serr(*span, "atoi_native does not take named args"));
+                        }
+                    };
+                    let out_expr = match &args[1] {
+                        Arg::Pos(e) => e,
+                        Arg::Named { .. } => {
+                            return Err(serr(*span, "atoi_native does not take named args"));
+                        }
+                    };
+                    let st = check_expr(
+                        s_expr, fn_ret_ty, fns, methods, scopes, enums, structs, module_id,
+                    )?;
+                    if st != Ty::Text {
+                        return Err(serr(s_expr.span(), "atoi_native expects text"));
+                    }
+                    let ot = check_expr(
+                        out_expr, fn_ret_ty, fns, methods, scopes, enums, structs, module_id,
+                    )?;
+                    if ot != Ty::Ref(Box::new(Ty::Int)) {
+                        return Err(serr(out_expr.span(), "atoi_native expects Addr<int>"));
+                    }
+                    Ok(Ty::Bool)
+                } else if fname == "get_int" {
+                    if args.len() != 2 {
+                        return Err(serr(*span, "get_int takes exactly 2 args"));
+                    }
+                    let p_expr = match &args[0] {
+                        Arg::Pos(e) => e,
+                        Arg::Named { .. } => {
+                            return Err(serr(*span, "get_int does not take named args"));
+                        }
+                    };
+                    let i_expr = match &args[1] {
+                        Arg::Pos(e) => e,
+                        Arg::Named { .. } => {
+                            return Err(serr(*span, "get_int does not take named args"));
+                        }
+                    };
+                    let pt = check_expr(
+                        p_expr, fn_ret_ty, fns, methods, scopes, enums, structs, module_id,
+                    )?;
+                    if pt != Ty::Ref(Box::new(Ty::Int)) {
+                        return Err(serr(p_expr.span(), "get_int expects Addr<int>"));
+                    }
+                    let it = check_expr(
+                        i_expr, fn_ret_ty, fns, methods, scopes, enums, structs, module_id,
+                    )?;
+                    if it != Ty::Int {
+                        return Err(serr(i_expr.span(), "get_int index must be int"));
+                    }
+                    Ok(Ty::Int)
+                } else if fname == "set_int" {
+                    if args.len() != 3 {
+                        return Err(serr(*span, "set_int takes exactly 3 args"));
+                    }
+                    let p_expr = match &args[0] {
+                        Arg::Pos(e) => e,
+                        Arg::Named { .. } => {
+                            return Err(serr(*span, "set_int does not take named args"));
+                        }
+                    };
+                    let i_expr = match &args[1] {
+                        Arg::Pos(e) => e,
+                        Arg::Named { .. } => {
+                            return Err(serr(*span, "set_int does not take named args"));
+                        }
+                    };
+                    let v_expr = match &args[2] {
+                        Arg::Pos(e) => e,
+                        Arg::Named { .. } => {
+                            return Err(serr(*span, "set_int does not take named args"));
+                        }
+                    };
+                    let pt = check_expr(
+                        p_expr, fn_ret_ty, fns, methods, scopes, enums, structs, module_id,
+                    )?;
+                    if pt != Ty::Ref(Box::new(Ty::Int)) {
+                        return Err(serr(p_expr.span(), "set_int expects Addr<int>"));
+                    }
+                    let it = check_expr(
+                        i_expr, fn_ret_ty, fns, methods, scopes, enums, structs, module_id,
+                    )?;
+                    if it != Ty::Int {
+                        return Err(serr(i_expr.span(), "set_int index must be int"));
+                    }
+                    let vt = check_expr(
+                        v_expr, fn_ret_ty, fns, methods, scopes, enums, structs, module_id,
+                    )?;
+                    if vt != Ty::Int {
+                        return Err(serr(v_expr.span(), "set_int value must be int"));
+                    }
+                    Ok(Ty::Void)
+                } else if fname == "get_text" {
+                    if args.len() != 2 {
+                        return Err(serr(*span, "get_text takes exactly 2 args"));
+                    }
+                    let p_expr = match &args[0] {
+                        Arg::Pos(e) => e,
+                        Arg::Named { .. } => {
+                            return Err(serr(*span, "get_text does not take named args"));
+                        }
+                    };
+                    let i_expr = match &args[1] {
+                        Arg::Pos(e) => e,
+                        Arg::Named { .. } => {
+                            return Err(serr(*span, "get_text does not take named args"));
+                        }
+                    };
+                    let pt = check_expr(
+                        p_expr, fn_ret_ty, fns, methods, scopes, enums, structs, module_id,
+                    )?;
+                    if pt != Ty::Ref(Box::new(Ty::Text)) {
+                        return Err(serr(p_expr.span(), "get_text expects Addr<text>"));
+                    }
+                    let it = check_expr(
+                        i_expr, fn_ret_ty, fns, methods, scopes, enums, structs, module_id,
+                    )?;
+                    if it != Ty::Int {
+                        return Err(serr(i_expr.span(), "get_text index must be int"));
+                    }
+                    Ok(Ty::Text)
+                } else if fname == "set_text" {
+                    if args.len() != 3 {
+                        return Err(serr(*span, "set_text takes exactly 3 args"));
+                    }
+                    let p_expr = match &args[0] {
+                        Arg::Pos(e) => e,
+                        Arg::Named { .. } => {
+                            return Err(serr(*span, "set_text does not take named args"));
+                        }
+                    };
+                    let i_expr = match &args[1] {
+                        Arg::Pos(e) => e,
+                        Arg::Named { .. } => {
+                            return Err(serr(*span, "set_text does not take named args"));
+                        }
+                    };
+                    let v_expr = match &args[2] {
+                        Arg::Pos(e) => e,
+                        Arg::Named { .. } => {
+                            return Err(serr(*span, "set_text does not take named args"));
+                        }
+                    };
+                    let pt = check_expr(
+                        p_expr, fn_ret_ty, fns, methods, scopes, enums, structs, module_id,
+                    )?;
+                    if pt != Ty::Ref(Box::new(Ty::Text)) {
+                        return Err(serr(p_expr.span(), "set_text expects Addr<text>"));
+                    }
+                    let it = check_expr(
+                        i_expr, fn_ret_ty, fns, methods, scopes, enums, structs, module_id,
+                    )?;
+                    if it != Ty::Int {
+                        return Err(serr(i_expr.span(), "set_text index must be int"));
+                    }
+                    let vt = check_expr(
+                        v_expr, fn_ret_ty, fns, methods, scopes, enums, structs, module_id,
+                    )?;
+                    if vt != Ty::Text {
+                        return Err(serr(v_expr.span(), "set_text value must be text"));
+                    }
+                    Ok(Ty::Void)
                 } else {
                     let sig = fns
                         .get(fname)

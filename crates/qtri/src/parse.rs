@@ -139,6 +139,18 @@ impl<'a> Parser<'a> {
                 self.next();
                 Ok((name, sp))
             }
+            TokKind::Kw(Kw::Self_) => {
+                let sp = t.span;
+                self.next();
+                Ok(("self".to_string(), sp))
+            }
+            TokKind::Kw(Kw::Continue) => {
+                // Contextual identifier: allow `next` (Tri: `nxt`) as a name.
+                // This is required for the iterator protocol `next()`.
+                let sp = t.span;
+                self.next();
+                Ok(("next".to_string(), sp))
+            }
             _ => Err(perr(
                 t.span,
                 format!("expected identifier, got {:?}", t.kind),
@@ -397,52 +409,6 @@ impl<'a> Parser<'a> {
         let mut fields = Vec::new();
 
         match self.peek().kind {
-            TokKind::LBrace => {
-                self.next();
-                self.skip_newlines();
-
-                if self.peek().kind != TokKind::RBrace {
-                    loop {
-                        let vis = match self.peek().kind {
-                            TokKind::Kw(Kw::Pub) => {
-                                self.next();
-                                Visibility::Public
-                            }
-                            TokKind::Kw(Kw::Priv) => {
-                                self.next();
-                                Visibility::Private
-                            }
-                            _ => Visibility::Private,
-                        };
-
-                        let (fname, fsp) = self.take_ident()?;
-                        self.expect(TokKind::Colon)?;
-                        let (fty, _) = self.parse_type_name()?;
-                        fields.push(Param {
-                            name: fname,
-                            ty: fty,
-                            mutable: false,
-                            vis,
-                            span: fsp,
-                        });
-
-                        if self.peek().kind == TokKind::Comma {
-                            self.next();
-                            self.skip_newlines();
-                            continue;
-                        }
-                        break;
-                    }
-                }
-
-                self.skip_newlines();
-                self.expect(TokKind::RBrace)?;
-                if self.peek().kind == TokKind::Newline {
-                    self.next();
-                } else if !self.at_eof() {
-                    return Err(perr(self.peek().span, "expected newline or EOF"));
-                }
-            }
             TokKind::Colon => {
                 self.next();
                 self.expect(TokKind::Newline)?;
@@ -483,10 +449,7 @@ impl<'a> Parser<'a> {
                 self.expect(TokKind::Dedent)?;
             }
             _ => {
-                return Err(perr(
-                    self.peek().span,
-                    "expected '{' or ':' after type name",
-                ));
+                return Err(perr(self.peek().span, "expected ':' after type name"));
             }
         }
 
@@ -625,7 +588,7 @@ impl<'a> Parser<'a> {
         match &t.kind {
             TokKind::Kw(Kw::Let) | TokKind::Kw(Kw::Var) => self.parse_vardecl(),
             TokKind::Kw(Kw::If) => self.parse_if(),
-            TokKind::Kw(Kw::Loop) => self.parse_while(),
+            TokKind::Kw(Kw::Loop) => self.parse_loop_stmt(),
             TokKind::Kw(Kw::Case) => self.parse_case(),
             TokKind::Kw(Kw::Break) => {
                 let sp = t.span;
@@ -641,8 +604,11 @@ impl<'a> Parser<'a> {
             }
             TokKind::Kw(Kw::Return) => self.parse_back(),
 
-            // assignment starts with Ident followed by := somewhere on the line (optionally via .field or [index])
-            TokKind::Ident(_) if self.line_contains_assign() => self.parse_assign(),
+            // assignment starts with Ident (or self/slf) followed by := somewhere on the line
+            // (optionally via .field or [index])
+            TokKind::Ident(_) | TokKind::Kw(Kw::Self_) if self.line_contains_assign() => {
+                self.parse_assign()
+            }
 
             // otherwise: expression statement (println(...), foo(...), etc.)
             _ => {
@@ -652,6 +618,49 @@ impl<'a> Parser<'a> {
                 Ok(Stmt::Expr { expr, span: sp })
             }
         }
+    }
+
+    fn line_contains_kw(&self, kw: Kw) -> bool {
+        let mut idx = self.i;
+        while idx < self.tokens.len() {
+            match &self.tokens[idx].kind {
+                TokKind::Newline | TokKind::Dedent => return false,
+                TokKind::Kw(k) if *k == kw => return true,
+                _ => idx += 1,
+            }
+        }
+        false
+    }
+
+    fn parse_loop_stmt(&mut self) -> Result<Stmt, ParseError> {
+        // Disambiguation:
+        // - while:   loop <cond>:
+        // - foreach: loop <name>: <Type> over <Expr>:
+        // Tri reuses Kw::Loop for `for` and Kw::In for `ovr`.
+        if self.line_contains_kw(Kw::In) {
+            self.parse_foreach()
+        } else {
+            self.parse_while()
+        }
+    }
+
+    fn parse_foreach(&mut self) -> Result<Stmt, ParseError> {
+        let sp = self.expect_kw(Kw::Loop)?;
+        let (name, _) = self.take_ident()?;
+        self.expect(TokKind::Colon)?;
+        let (ty, _) = self.parse_type_name()?;
+        self.expect_kw(Kw::In)?;
+        let iter = self.parse_expr(0)?;
+        self.expect(TokKind::Colon)?;
+        self.expect(TokKind::Newline)?;
+        let body = self.parse_block()?;
+        Ok(Stmt::Foreach {
+            name,
+            ty,
+            iter,
+            body,
+            span: sp,
+        })
     }
 
     fn line_contains_assign(&self) -> bool {
@@ -993,16 +1002,12 @@ impl<'a> Parser<'a> {
                 self.next();
                 Ok(Expr::Int(v, sp))
             }
-            TokKind::Kw(Kw::Box | Kw::Drop) => {
+            TokKind::Kw(Kw::Self_) => {
                 let sp = t.span;
-                let name = match t.kind {
-                    TokKind::Kw(Kw::Box) => "heap",
-                    TokKind::Kw(Kw::Drop) => "free",
-                    _ => unreachable!(),
-                };
                 self.next();
-                Ok(Expr::Ident(name.into(), sp))
+                Ok(Expr::Ident("self".into(), sp))
             }
+
             TokKind::LBrack => {
                 let sp = t.span;
                 self.next();
@@ -1070,14 +1075,10 @@ impl<'a> Parser<'a> {
                 let s = s.clone();
                 self.next();
                 if self.peek().kind == TokKind::LBrace {
-                    self.next();
-                    let fields = self.parse_struct_fields()?;
-                    self.expect(TokKind::RBrace)?;
-                    Ok(Expr::StructLit {
-                        name: s,
-                        fields,
-                        span: sp,
-                    })
+                    return Err(perr(
+                        self.peek().span,
+                        "struct literal syntax 'TypeName { ... }' has been removed; use 'TypeName(...)'",
+                    ));
                 } else if self.peek().kind == TokKind::ColonColon {
                     self.next(); // consume ::
                     let (variant, _) = self.take_ident()?;
@@ -1172,38 +1173,6 @@ impl<'a> Parser<'a> {
         }
         Ok(args)
     }
-
-    fn parse_struct_fields(&mut self) -> Result<Vec<(String, Expr, Span)>, ParseError> {
-        let mut fields = Vec::new();
-        self.skip_newlines();
-        if self.peek().kind == TokKind::Indent {
-            self.next();
-            self.skip_newlines();
-        }
-        if self.peek().kind == TokKind::RBrace {
-            return Ok(fields);
-        }
-
-        loop {
-            let (name, sp) = self.take_ident()?;
-            self.expect(TokKind::Colon)?;
-            let expr = self.parse_expr(0)?;
-            fields.push((name, expr, sp));
-
-            if self.peek().kind == TokKind::Comma {
-                self.next();
-                self.skip_newlines();
-                continue;
-            }
-            break;
-        }
-        self.skip_newlines();
-        if self.peek().kind == TokKind::Dedent {
-            self.next();
-            self.skip_newlines();
-        }
-        Ok(fields)
-    }
 }
 
 fn is_cmp(k: &TokKind) -> bool {
@@ -1250,7 +1219,7 @@ mod tests {
 
     #[test]
     fn parses_quad_heap_and_stack_struct_example() {
-        let src = "type User:\n    publ name: text\n    publ age: int\n\nfunc main() -> int:\n    # ---------------------------------------------------\n    # 1. Stack allocation\n    #    Rust: let u = User { name: \"Bob\", age: 20 };\n    #    Go:   u := User{Name: \"Bob\", Age: 20}\n    # ---------------------------------------------------\n    cell u: User := User {\n        name: \"Bob\",\n        age: 20\n    }\n    \n    # Field access uses the dot operator\n    println(u.name)\n\n\n    # ---------------------------------------------------\n    # 2. Heap allocation\n    #    Rust: let p = Box::new(User { ... });\n    #    Go:   p := &User{ ... }\n    # ---------------------------------------------------\n    # Passing the struct value to heap() moves it to the heap and returns ref<User>.\n    \n    cell p: ref<User> := heap(User {\n        name: \"Alice\",\n        age: 30\n    })\n\n    # Pointer access supports automatic dereference\n    println(p.name)\n\n    # Heap values must be freed\n    free(p)\n\n    back 0\n";
+        let src = "type User:\n    publ name: text\n    publ age: int\n\nfunc main() -> int:\n    # ---------------------------------------------------\n    # 1. Stack allocation\n    # ---------------------------------------------------\n    cell u: User := User(name: \"Bob\", age: 20)\n    \n    # Field access uses the dot operator\n    println(u.name)\n\n\n    # ---------------------------------------------------\n    # 2. Heap allocation\n    # ---------------------------------------------------\n    # Passing the struct value to heap() moves it to the heap and returns Addr<User>.\n    \n    cell p: Addr<User> := heap(User(name: \"Alice\", age: 30))\n\n    # Pointer access supports automatic dereference\n    println(p.name)\n\n    # Heap values must be freed\n    free(p)\n\n    back 0\n";
 
         let tokens = lex::lex_str(Language::Quad, src, 0).expect("lexing succeeds");
         let _ = parse_program(&tokens).expect("program parses");
@@ -1258,7 +1227,7 @@ mod tests {
 
     #[test]
     fn parses_tri_heap_and_stack_struct_example() {
-        let src = "typ Usr:\n    pub nam: text\n    pub age: int\n\ndef main() -> int:\n    # ---------------------------------------------------\n    # 1. Stack allocation\n    #    Construct directly without new/make\n    # ---------------------------------------------------\n    var u: Usr := Usr {\n        nam: \"Bob\",\n        age: 20\n    }\n    \n    println(u.nam)\n\n\n    # ---------------------------------------------------\n    # 2. Heap allocation\n    #    Wrap with mem()\n    # ---------------------------------------------------\n    var p: ptr<Usr> := mem(Usr {\n        nam: \"Alice\",\n        age: 30\n    })\n\n    println(p.nam)\n\n    # Free the heap allocation\n    del(p)\n\n    ret 0\n";
+        let src = "typ Usr:\n    pub nam: text\n    pub age: int\n\ndef main() -> int:\n    # ---------------------------------------------------\n    # 1. Stack allocation\n    # ---------------------------------------------------\n    var u: Usr := Usr(nam: \"Bob\", age: 20)\n    \n    println(u.nam)\n\n\n    # ---------------------------------------------------\n    # 2. Heap allocation\n    # ---------------------------------------------------\n    # Wrap with mem()\n    var p: Ptr<Usr> := mem(Usr(nam: \"Alice\", age: 30))\n\n    println(p.nam)\n\n    # Free the heap allocation\n    del(p)\n\n    ret 0\n";
 
         let tokens = lex::lex_str(Language::Tri, src, 0).expect("lexing succeeds");
         let _ = parse_program(&tokens).expect("program parses");

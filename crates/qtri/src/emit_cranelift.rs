@@ -102,18 +102,16 @@ pub fn emit_module(prog: &LinkedProgram, sem: &SemInfo) -> Result<Vec<u8>, EmitE
                     e.to_string(),
                 )
             })?;
-        module
-            .define_data(id, &data_ctx)
-            .map_err(|e| {
-                eerr(
-                    Span {
-                        file_id: 0,
-                        line: 0,
-                        col: 0,
-                    },
-                    e.to_string(),
-                )
-            })?;
+        module.define_data(id, &data_ctx).map_err(|e| {
+            eerr(
+                Span {
+                    file_id: 0,
+                    line: 0,
+                    col: 0,
+                },
+                e.to_string(),
+            )
+        })?;
         data_ctx.clear();
         str_data_ids.insert(text.clone(), id);
     }
@@ -121,11 +119,11 @@ pub fn emit_module(prog: &LinkedProgram, sem: &SemInfo) -> Result<Vec<u8>, EmitE
     // 2. Declare external functions
     let mut ext_fns: HashMap<String, cranelift_module::FuncId> = HashMap::new();
 
-    // quad_echo_i64
+    // qtrt_echo_i64
     let mut sig_echo_i64 = module.make_signature();
     sig_echo_i64.params.push(AbiParam::new(types::I64));
     let id_echo_i64 = module
-        .declare_function("quad_echo_i64", Linkage::Import, &sig_echo_i64)
+        .declare_function("qtrt_echo_i64", Linkage::Import, &sig_echo_i64)
         .map_err(|e| {
             eerr(
                 Span {
@@ -136,13 +134,13 @@ pub fn emit_module(prog: &LinkedProgram, sem: &SemInfo) -> Result<Vec<u8>, EmitE
                 e.to_string(),
             )
         })?;
-    ext_fns.insert("quad_echo_i64".to_string(), id_echo_i64);
+    ext_fns.insert("qtrt_echo_i64".to_string(), id_echo_i64);
 
-    // quad_print_i64
+    // qtrt_print_i64
     let mut sig_print_i64 = module.make_signature();
     sig_print_i64.params.push(AbiParam::new(types::I64));
     let id_print_i64 = module
-        .declare_function("quad_print_i64", Linkage::Import, &sig_print_i64)
+        .declare_function("qtrt_print_i64", Linkage::Import, &sig_print_i64)
         .map_err(|e| {
             eerr(
                 Span {
@@ -153,15 +151,15 @@ pub fn emit_module(prog: &LinkedProgram, sem: &SemInfo) -> Result<Vec<u8>, EmitE
                 e.to_string(),
             )
         })?;
-    ext_fns.insert("quad_print_i64".to_string(), id_print_i64);
+    ext_fns.insert("qtrt_print_i64".to_string(), id_print_i64);
 
-    // quad_echo_cstr
+    // qtrt_echo_cstr
     let mut sig_echo_cstr = module.make_signature();
     sig_echo_cstr
         .params
         .push(AbiParam::new(module.target_config().pointer_type()));
     let id_echo_cstr = module
-        .declare_function("quad_echo_cstr", Linkage::Import, &sig_echo_cstr)
+        .declare_function("qtrt_echo_cstr", Linkage::Import, &sig_echo_cstr)
         .map_err(|e| {
             eerr(
                 Span {
@@ -172,15 +170,15 @@ pub fn emit_module(prog: &LinkedProgram, sem: &SemInfo) -> Result<Vec<u8>, EmitE
                 e.to_string(),
             )
         })?;
-    ext_fns.insert("quad_echo_cstr".to_string(), id_echo_cstr);
+    ext_fns.insert("qtrt_echo_cstr".to_string(), id_echo_cstr);
 
-    // quad_print_cstr
+    // qtrt_print_cstr
     let mut sig_print_cstr = module.make_signature();
     sig_print_cstr
         .params
         .push(AbiParam::new(module.target_config().pointer_type()));
     let id_print_cstr = module
-        .declare_function("quad_print_cstr", Linkage::Import, &sig_print_cstr)
+        .declare_function("qtrt_print_cstr", Linkage::Import, &sig_print_cstr)
         .map_err(|e| {
             eerr(
                 Span {
@@ -191,16 +189,16 @@ pub fn emit_module(prog: &LinkedProgram, sem: &SemInfo) -> Result<Vec<u8>, EmitE
                 e.to_string(),
             )
         })?;
-    ext_fns.insert("quad_print_cstr".to_string(), id_print_cstr);
+    ext_fns.insert("qtrt_print_cstr".to_string(), id_print_cstr);
 
-    // quad_alloc
+    // qtrt_alloc
     let mut sig_alloc = module.make_signature();
     sig_alloc.params.push(AbiParam::new(types::I64)); // size
     sig_alloc
         .returns
         .push(AbiParam::new(module.target_config().pointer_type()));
     let id_alloc = module
-        .declare_function("quad_alloc", Linkage::Import, &sig_alloc)
+        .declare_function("qtrt_alloc", Linkage::Import, &sig_alloc)
         .map_err(|e| {
             eerr(
                 Span {
@@ -211,16 +209,16 @@ pub fn emit_module(prog: &LinkedProgram, sem: &SemInfo) -> Result<Vec<u8>, EmitE
                 e.to_string(),
             )
         })?;
-    ext_fns.insert("quad_alloc".to_string(), id_alloc);
+    ext_fns.insert("qtrt_alloc".to_string(), id_alloc);
 
-    // quad_free
+    // qtrt_free
     let mut sig_free = module.make_signature();
     sig_free
         .params
         .push(AbiParam::new(module.target_config().pointer_type())); // ptr
     sig_free.params.push(AbiParam::new(types::I64)); // size
     let id_free = module
-        .declare_function("quad_free", Linkage::Import, &sig_free)
+        .declare_function("qtrt_free", Linkage::Import, &sig_free)
         .map_err(|e| {
             eerr(
                 Span {
@@ -231,7 +229,7 @@ pub fn emit_module(prog: &LinkedProgram, sem: &SemInfo) -> Result<Vec<u8>, EmitE
                 e.to_string(),
             )
         })?;
-    ext_fns.insert("quad_free".to_string(), id_free);
+    ext_fns.insert("qtrt_free".to_string(), id_free);
 
     // quad_list_new
     // Returns FatPtr (3 words: ptr, len, cap)
@@ -246,8 +244,8 @@ pub fn emit_module(prog: &LinkedProgram, sem: &SemInfo) -> Result<Vec<u8>, EmitE
     // WE NEED TO CHECK IF RUST DOES SRET AUTOMATICALLY FOR THIS SIZE.
     // 3 * 64bit usually uses sret.
 
-    // quad_list_push
-    // fn quad_list_push(list: *mut FatPtr, elem: *const u8, elem_size: usize)
+    // qtrt_list_push
+    // fn qtrt_list_push(list: *mut FatPtr, elem: *const u8, elem_size: usize)
     let mut sig_list_push = module.make_signature();
     sig_list_push
         .params
@@ -257,7 +255,7 @@ pub fn emit_module(prog: &LinkedProgram, sem: &SemInfo) -> Result<Vec<u8>, EmitE
         .push(AbiParam::new(module.target_config().pointer_type())); // elem ptr
     sig_list_push.params.push(AbiParam::new(types::I64)); // elem_size
     let id_list_push = module
-        .declare_function("quad_list_push", Linkage::Import, &sig_list_push)
+        .declare_function("qtrt_list_push", Linkage::Import, &sig_list_push)
         .map_err(|e| {
             eerr(
                 Span {
@@ -268,16 +266,16 @@ pub fn emit_module(prog: &LinkedProgram, sem: &SemInfo) -> Result<Vec<u8>, EmitE
                 e.to_string(),
             )
         })?;
-    ext_fns.insert("quad_list_push".to_string(), id_list_push);
+    ext_fns.insert("qtrt_list_push".to_string(), id_list_push);
 
-    // quad_print_str
-    // fn quad_print_str(s: FatPtr);
+    // qtrt_print_str
+    // fn qtrt_print_str(s: FatPtr);
     let mut sig_print_str = module.make_signature();
     sig_print_str
         .params
         .push(AbiParam::new(module.target_config().pointer_type())); // s: *mut FatPtr
     let id_print_str = module
-        .declare_function("quad_print_str", Linkage::Import, &sig_print_str)
+        .declare_function("qtrt_print_str", Linkage::Import, &sig_print_str)
         .map_err(|e| {
             eerr(
                 Span {
@@ -288,17 +286,17 @@ pub fn emit_module(prog: &LinkedProgram, sem: &SemInfo) -> Result<Vec<u8>, EmitE
                 e.to_string(),
             )
         })?;
-    ext_fns.insert("quad_print_str".to_string(), id_print_str);
+    ext_fns.insert("qtrt_print_str".to_string(), id_print_str);
 
-    // quad_print_str_no_nl
-    // fn quad_print_str_no_nl(s: *const FatPtr);
+    // qtrt_print_str_no_nl
+    // fn qtrt_print_str_no_nl(s: *const FatPtr);
     let mut sig_print_str_no_nl = module.make_signature();
     sig_print_str_no_nl
         .params
         .push(AbiParam::new(module.target_config().pointer_type()));
     let id_print_str_no_nl = module
         .declare_function(
-            "quad_print_str_no_nl",
+            "qtrt_print_str_no_nl",
             Linkage::Import,
             &sig_print_str_no_nl,
         )
@@ -312,17 +310,17 @@ pub fn emit_module(prog: &LinkedProgram, sem: &SemInfo) -> Result<Vec<u8>, EmitE
                 e.to_string(),
             )
         })?;
-    ext_fns.insert("quad_print_str_no_nl".to_string(), id_print_str_no_nl);
+    ext_fns.insert("qtrt_print_str_no_nl".to_string(), id_print_str_no_nl);
 
-    // quad_panic
-    // fn quad_panic(ptr: *const u8, len: i64) -> ! (treated as void)
+    // qtrt_panic
+    // fn qtrt_panic(ptr: *const u8, len: i64) -> ! (treated as void)
     let mut sig_panic = module.make_signature();
     sig_panic
         .params
         .push(AbiParam::new(module.target_config().pointer_type())); // ptr
     sig_panic.params.push(AbiParam::new(types::I64)); // len
     let id_panic = module
-        .declare_function("quad_panic", Linkage::Import, &sig_panic)
+        .declare_function("qtrt_panic", Linkage::Import, &sig_panic)
         .map_err(|e| {
             eerr(
                 Span {
@@ -333,17 +331,17 @@ pub fn emit_module(prog: &LinkedProgram, sem: &SemInfo) -> Result<Vec<u8>, EmitE
                 e.to_string(),
             )
         })?;
-    ext_fns.insert("quad_panic".to_string(), id_panic);
+    ext_fns.insert("qtrt_panic".to_string(), id_panic);
 
-    // quad_string_len
-    // fn quad_string_len(s: FatPtr) -> i64;
+    // qtrt_string_len
+    // fn qtrt_string_len(s: FatPtr) -> i64;
     let mut sig_string_len = module.make_signature();
     sig_string_len
         .params
         .push(AbiParam::new(module.target_config().pointer_type())); // s: *mut FatPtr
     sig_string_len.returns.push(AbiParam::new(types::I64));
     let id_string_len = module
-        .declare_function("quad_string_len", Linkage::Import, &sig_string_len)
+        .declare_function("qtrt_string_len", Linkage::Import, &sig_string_len)
         .map_err(|e| {
             eerr(
                 Span {
@@ -354,10 +352,10 @@ pub fn emit_module(prog: &LinkedProgram, sem: &SemInfo) -> Result<Vec<u8>, EmitE
                 e.to_string(),
             )
         })?;
-    ext_fns.insert("quad_string_len".to_string(), id_string_len);
+    ext_fns.insert("qtrt_string_len".to_string(), id_string_len);
 
-    // quad_string_concat
-    // fn quad_string_concat(s1: FatPtr, s2: FatPtr) -> FatPtr;
+    // qtrt_string_concat
+    // fn qtrt_string_concat(s1: FatPtr, s2: FatPtr) -> FatPtr;
     let mut sig_string_concat = module.make_signature();
     sig_string_concat
         .params
@@ -369,7 +367,7 @@ pub fn emit_module(prog: &LinkedProgram, sem: &SemInfo) -> Result<Vec<u8>, EmitE
         .params
         .push(AbiParam::new(module.target_config().pointer_type())); // s2: *mut FatPtr
     let id_string_concat = module
-        .declare_function("quad_string_concat", Linkage::Import, &sig_string_concat)
+        .declare_function("qtrt_string_concat", Linkage::Import, &sig_string_concat)
         .map_err(|e| {
             eerr(
                 Span {
@@ -380,10 +378,10 @@ pub fn emit_module(prog: &LinkedProgram, sem: &SemInfo) -> Result<Vec<u8>, EmitE
                 e.to_string(),
             )
         })?;
-    ext_fns.insert("quad_string_concat".to_string(), id_string_concat);
+    ext_fns.insert("qtrt_string_concat".to_string(), id_string_concat);
 
-    // quad_string_eq
-    // fn quad_string_eq(s1: FatPtr, s2: FatPtr) -> bool;
+    // qtrt_string_eq
+    // fn qtrt_string_eq(s1: FatPtr, s2: FatPtr) -> bool;
     let mut sig_string_eq = module.make_signature();
     sig_string_eq
         .params
@@ -393,7 +391,7 @@ pub fn emit_module(prog: &LinkedProgram, sem: &SemInfo) -> Result<Vec<u8>, EmitE
         .push(AbiParam::new(module.target_config().pointer_type())); // s2: *mut FatPtr
     sig_string_eq.returns.push(AbiParam::new(types::I8)); // bool (u8)
     let id_string_eq = module
-        .declare_function("quad_string_eq", Linkage::Import, &sig_string_eq)
+        .declare_function("qtrt_string_eq", Linkage::Import, &sig_string_eq)
         .map_err(|e| {
             eerr(
                 Span {
@@ -404,10 +402,10 @@ pub fn emit_module(prog: &LinkedProgram, sem: &SemInfo) -> Result<Vec<u8>, EmitE
                 e.to_string(),
             )
         })?;
-    ext_fns.insert("quad_string_eq".to_string(), id_string_eq);
+    ext_fns.insert("qtrt_string_eq".to_string(), id_string_eq);
 
-    // quad_read_file
-    // fn quad_read_file(sret: *mut FatPtr, path: *const FatPtr)
+    // qtrt_read_file
+    // fn qtrt_read_file(sret: *mut FatPtr, path: *const FatPtr)
     let mut sig_read_file = module.make_signature();
     sig_read_file
         .params
@@ -416,7 +414,7 @@ pub fn emit_module(prog: &LinkedProgram, sem: &SemInfo) -> Result<Vec<u8>, EmitE
         .params
         .push(AbiParam::new(module.target_config().pointer_type())); // path: *const FatPtr
     let id_read_file = module
-        .declare_function("quad_read_file", Linkage::Import, &sig_read_file)
+        .declare_function("qtrt_read_file", Linkage::Import, &sig_read_file)
         .map_err(|e| {
             eerr(
                 Span {
@@ -427,10 +425,55 @@ pub fn emit_module(prog: &LinkedProgram, sem: &SemInfo) -> Result<Vec<u8>, EmitE
                 e.to_string(),
             )
         })?;
-    ext_fns.insert("quad_read_file".to_string(), id_read_file);
+    ext_fns.insert("qtrt_read_file".to_string(), id_read_file);
 
-    // quad_list_with_capacity
-    // fn quad_list_with_capacity(elem_size: usize, capacity: usize) -> FatPtr
+    // qtrt_itoa
+    // fn qtrt_itoa(sret: *mut FatPtr, n: i64)
+    let mut sig_itoa = module.make_signature();
+    sig_itoa
+        .params
+        .push(AbiParam::new(module.target_config().pointer_type())); // sret
+    sig_itoa.params.push(AbiParam::new(types::I64)); // n
+    let id_itoa = module
+        .declare_function("qtrt_itoa", Linkage::Import, &sig_itoa)
+        .map_err(|e| {
+            eerr(
+                Span {
+                    file_id: 0,
+                    line: 0,
+                    col: 0,
+                },
+                e.to_string(),
+            )
+        })?;
+    ext_fns.insert("qtrt_itoa".to_string(), id_itoa);
+
+    // qtrt_atoi
+    // fn qtrt_atoi(s: *const FatPtr, out: *mut i64) -> i64 (bool)
+    let mut sig_atoi = module.make_signature();
+    sig_atoi
+        .params
+        .push(AbiParam::new(module.target_config().pointer_type())); // s: *const FatPtr
+    sig_atoi
+        .params
+        .push(AbiParam::new(module.target_config().pointer_type())); // out: *mut i64
+    sig_atoi.returns.push(AbiParam::new(types::I64));
+    let id_atoi = module
+        .declare_function("qtrt_atoi", Linkage::Import, &sig_atoi)
+        .map_err(|e| {
+            eerr(
+                Span {
+                    file_id: 0,
+                    line: 0,
+                    col: 0,
+                },
+                e.to_string(),
+            )
+        })?;
+    ext_fns.insert("qtrt_atoi".to_string(), id_atoi);
+
+    // qtrt_list_with_capacity
+    // fn qtrt_list_with_capacity(elem_size: usize, capacity: usize) -> FatPtr
     // ABI: sret (pointer to return value) is first arg.
     let mut sig_list_cap = module.make_signature();
     sig_list_cap
@@ -440,7 +483,7 @@ pub fn emit_module(prog: &LinkedProgram, sem: &SemInfo) -> Result<Vec<u8>, EmitE
     sig_list_cap.params.push(AbiParam::new(types::I64)); // capacity
     // returns void (data written to sret ptr)
     let id_list_cap = module
-        .declare_function("quad_list_with_capacity", Linkage::Import, &sig_list_cap)
+        .declare_function("qtrt_list_with_capacity", Linkage::Import, &sig_list_cap)
         .map_err(|e| {
             eerr(
                 Span {
@@ -451,17 +494,17 @@ pub fn emit_module(prog: &LinkedProgram, sem: &SemInfo) -> Result<Vec<u8>, EmitE
                 e.to_string(),
             )
         })?;
-    ext_fns.insert("quad_list_with_capacity".to_string(), id_list_cap);
+    ext_fns.insert("qtrt_list_with_capacity".to_string(), id_list_cap);
 
-    // quad_list_drop
-    // fn quad_list_drop(list: *mut FatPtr, elem_size: usize)
+    // qtrt_list_drop
+    // fn qtrt_list_drop(list: *mut FatPtr, elem_size: usize)
     let mut sig_list_drop = module.make_signature();
     sig_list_drop
         .params
         .push(AbiParam::new(module.target_config().pointer_type())); // list ptr
     sig_list_drop.params.push(AbiParam::new(types::I64)); // elem_size
     let id_list_drop = module
-        .declare_function("quad_list_drop", Linkage::Import, &sig_list_drop)
+        .declare_function("qtrt_list_drop", Linkage::Import, &sig_list_drop)
         .map_err(|e| {
             eerr(
                 Span {
@@ -472,7 +515,7 @@ pub fn emit_module(prog: &LinkedProgram, sem: &SemInfo) -> Result<Vec<u8>, EmitE
                 e.to_string(),
             )
         })?;
-    ext_fns.insert("quad_list_drop".to_string(), id_list_drop);
+    ext_fns.insert("qtrt_list_drop".to_string(), id_list_drop);
 
     // 3. Declare all user functions first (to handle forward references)
     let mut user_fns: HashMap<String, cranelift_module::FuncId> = HashMap::new();
@@ -1158,6 +1201,180 @@ fn compile_stmt(stmt: &Stmt, ctx: &mut CompilerCtx) -> Result<(), EmitError> {
             ctx.builder.seal_block(body_block);
             ctx.builder.seal_block(exit_block);
         }
+        Stmt::Foreach {
+            name,
+            ty,
+            iter,
+            body,
+            span,
+        } => {
+            let loop_var_ty = crate::sem::parse_ty(ty, &ctx.sem.structs, &ctx.sem.enums)
+                .ok_or_else(|| eerr(*span, "unknown foreach variable type"))?;
+
+            // Evaluate iterator once and keep a stable receiver pointer.
+            let iter_val = compile_expr(iter, ctx)?;
+            let (iter_struct, recv_ptr) = match iter_val {
+                ValueKind::AggregatePtr {
+                    addr,
+                    ty: Ty::Struct(sname),
+                    slot,
+                } => {
+                    // Ensure iterator lives in a stack slot we can mutate via methods.
+                    let recv = if let Some(s) = slot {
+                        ctx.builder.ins().stack_addr(ctx.ptr_ty, s, 0)
+                    } else {
+                        let (sz, al) = ty_size_align(&Ty::Struct(sname.clone()), ctx, *span)?;
+                        let ss = ctx.builder.create_sized_stack_slot(StackSlotData::new(
+                            StackSlotKind::ExplicitSlot,
+                            sz as u32,
+                            al.trailing_zeros() as u8,
+                        ));
+                        let dst = ctx.builder.ins().stack_addr(ctx.ptr_ty, ss, 0);
+                        copy_memory(addr, dst, sz, ctx);
+                        dst
+                    };
+                    (sname, recv)
+                }
+                ValueKind::Scalar(ptr, Ty::Ref(inner)) => match *inner {
+                    Ty::Struct(sname) => (sname, ptr),
+                    _ => return Err(eerr(*span, "foreach iterator must be a struct")),
+                },
+                _ => return Err(eerr(*span, "foreach iterator must be a struct")),
+            };
+
+            let msig = ctx
+                .sem
+                .methods
+                .get(&iter_struct)
+                .and_then(|m| m.get("next"))
+                .ok_or_else(|| eerr(*span, "foreach iterator missing next() method"))?;
+
+            let opt_enum = match &msig.ret {
+                Ty::Enum(n) => n.clone(),
+                _ => return Err(eerr(*span, "next() must return Option<T>")),
+            };
+            let einfo = ctx
+                .sem
+                .enums
+                .get(&opt_enum)
+                .ok_or_else(|| eerr(*span, "unknown Option<T> enum"))?
+                .clone();
+
+            // Allocate a stack slot for the Option result.
+            let (opt_sz, opt_al) = ty_size_align(&Ty::Enum(opt_enum.clone()), ctx, *span)?;
+            let opt_slot = ctx.builder.create_sized_stack_slot(StackSlotData::new(
+                StackSlotKind::ExplicitSlot,
+                opt_sz as u32,
+                opt_al.trailing_zeros() as u8,
+            ));
+            let opt_addr = ctx.builder.ins().stack_addr(ctx.ptr_ty, opt_slot, 0);
+
+            // Determine tags/offsets for Option.
+            let some_tag = enum_tag_index(&einfo, "Some", *span)?;
+            let some_off = enum_variant_field_offset(&einfo, "Some", 0, ctx, *span)?;
+
+            let header_block = ctx.builder.create_block();
+            let body_block = ctx.builder.create_block();
+            let exit_block = ctx.builder.create_block();
+
+            // Pass extracted payload to the body as a block parameter.
+            let payload_param_ty = if is_aggregate_ty(&loop_var_ty) {
+                ctx.ptr_ty
+            } else {
+                ty_cl(loop_var_ty.clone(), ctx.ptr_ty)
+            };
+            ctx.builder.append_block_param(body_block, payload_param_ty);
+
+            ctx.builder.ins().jump(header_block, &[]);
+            ctx.builder.switch_to_block(header_block);
+
+            // Call next(): Option<T>
+            let fid = ctx
+                .user_fns
+                .get(&msig.symbol)
+                .ok_or_else(|| eerr(*span, "missing next() symbol"))?;
+            let func_ref = ctx.module.declare_func_in_func(*fid, ctx.builder.func);
+            ctx.builder.ins().call(func_ref, &[opt_addr, recv_ptr]);
+
+            // Branch on Option tag.
+            let tag = ctx
+                .builder
+                .ins()
+                .load(types::I64, MemFlags::new(), opt_addr, 0);
+            let some_tag_val = ctx.builder.ins().iconst(types::I64, some_tag);
+            let is_some = ctx.builder.ins().icmp(IntCC::Equal, tag, some_tag_val);
+
+            if is_aggregate_ty(&loop_var_ty) {
+                let payload_ptr = ctx.builder.ins().iadd_imm(opt_addr, some_off as i64);
+                ctx.builder.ins().brif(
+                    is_some,
+                    body_block,
+                    &[BlockArg::from(payload_ptr)],
+                    exit_block,
+                    &[],
+                );
+            } else {
+                let cl_ty = ty_cl(loop_var_ty.clone(), ctx.ptr_ty);
+                let payload_val =
+                    ctx.builder
+                        .ins()
+                        .load(cl_ty, MemFlags::new(), opt_addr, some_off);
+                ctx.builder.ins().brif(
+                    is_some,
+                    body_block,
+                    &[BlockArg::from(payload_val)],
+                    exit_block,
+                    &[],
+                );
+            }
+
+            ctx.builder.switch_to_block(body_block);
+            // Loop body
+            ctx.loops.push((exit_block, header_block));
+            ctx.vars.push(HashMap::new());
+
+            let payload = ctx.builder.block_params(body_block)[0];
+            match loop_var_ty.clone() {
+                Ty::Struct(_) | Ty::Enum(_) | Ty::Array { .. } | Ty::Text => {
+                    let (sz, al) = ty_size_align(&loop_var_ty, ctx, *span)?;
+                    let slot = ctx.builder.create_sized_stack_slot(StackSlotData::new(
+                        StackSlotKind::ExplicitSlot,
+                        sz as u32,
+                        al.trailing_zeros() as u8,
+                    ));
+                    let dst = ctx.builder.ins().stack_addr(ctx.ptr_ty, slot, 0);
+                    copy_memory(payload, dst, sz, ctx);
+                    ctx.vars.last_mut().unwrap().insert(
+                        name.clone(),
+                        VarBinding::AggregateOwned {
+                            slot,
+                            ty: loop_var_ty.clone(),
+                        },
+                    );
+                }
+                _ => {
+                    let cl_ty = ty_cl(loop_var_ty.clone(), ctx.ptr_ty);
+                    let var = ctx.declare_scalar(name.clone(), cl_ty, loop_var_ty.clone());
+                    ctx.builder.def_var(var, payload);
+                }
+            }
+
+            for s in body {
+                compile_stmt(s, ctx)?;
+            }
+
+            ctx.vars.pop();
+            ctx.loops.pop();
+
+            if !current_block_terminated(ctx) {
+                ctx.builder.ins().jump(header_block, &[]);
+            }
+
+            ctx.builder.switch_to_block(exit_block);
+            ctx.builder.seal_block(header_block);
+            ctx.builder.seal_block(body_block);
+            ctx.builder.seal_block(exit_block);
+        }
         Stmt::Break { span } => {
             let (brk, _) = ctx
                 .loops
@@ -1237,8 +1454,8 @@ fn compile_expr(expr: &Expr, ctx: &mut CompilerCtx) -> Result<ValueKind, EmitErr
             ));
             let list_ptr = ctx.builder.ins().stack_addr(ctx.ptr_ty, slot, 0);
 
-            // 3. Call quad_list_with_capacity(sret=list_ptr, elem_size, capacity=len)
-            let fid = ctx.ext_fns.get("quad_list_with_capacity").unwrap();
+            // 3. Call qtrt_list_with_capacity(sret=list_ptr, elem_size, capacity=len)
+            let fid = ctx.ext_fns.get("qtrt_list_with_capacity").unwrap();
             let func_ref = ctx.module.declare_func_in_func(*fid, ctx.builder.func);
             let elem_size_val = ctx.builder.ins().iconst(types::I64, elem_size as i64);
             let cap_val = ctx.builder.ins().iconst(types::I64, len as i64);
@@ -1270,7 +1487,7 @@ fn compile_expr(expr: &Expr, ctx: &mut CompilerCtx) -> Result<ValueKind, EmitErr
                     _ => v, // Aggregate ptr is already an address
                 };
 
-                let fid_push = ctx.ext_fns.get("quad_list_push").unwrap();
+                let fid_push = ctx.ext_fns.get("qtrt_list_push").unwrap();
                 let fref_push = ctx.module.declare_func_in_func(*fid_push, ctx.builder.func);
                 let sz_val = ctx.builder.ins().iconst(types::I64, elem_size as i64);
                 ctx.builder.ins().call(fref_push, &[list_ptr, addr, sz_val]);
@@ -1303,7 +1520,7 @@ fn compile_expr(expr: &Expr, ctx: &mut CompilerCtx) -> Result<ValueKind, EmitErr
                     _ => v,
                 };
 
-                let fid_push = ctx.ext_fns.get("quad_list_push").unwrap();
+                let fid_push = ctx.ext_fns.get("qtrt_list_push").unwrap();
                 let fref_push = ctx.module.declare_func_in_func(*fid_push, ctx.builder.func);
                 let sz_val = ctx.builder.ins().iconst(types::I64, elem_size as i64);
                 ctx.builder.ins().call(fref_push, &[list_ptr, addr, sz_val]);
@@ -1333,34 +1550,6 @@ fn compile_expr(expr: &Expr, ctx: &mut CompilerCtx) -> Result<ValueKind, EmitErr
             }),
             None => Err(eerr(*span, "unknown var")),
         },
-        Expr::StructLit { name, fields, span } => {
-            let layout = get_struct_layout(name, ctx, *span)?;
-            let align_shift = layout.align.trailing_zeros() as u8;
-            let slot = ctx.builder.create_sized_stack_slot(StackSlotData::new(
-                StackSlotKind::ExplicitSlot,
-                layout.size as u32,
-                align_shift,
-            ));
-            let base = ctx.builder.ins().stack_addr(ctx.ptr_ty, slot, 0);
-
-            for (fname, expr, _fspan) in fields {
-                let fld = layout.fields.iter().find(|f| f.name == *fname).unwrap();
-                let val = compile_expr(expr, ctx)?;
-                match val {
-                    ValueKind::Scalar(v, _) => store_field(base, fld.offset, v, &fld.ty, ctx)?,
-                    ValueKind::AggregatePtr { addr: src, ty, .. } => {
-                        let dst = ctx.builder.ins().iadd_imm(base, fld.offset as i64);
-                        let (sz, _) = ty_size_align(&ty, ctx, *span)?;
-                        copy_memory(src, dst, sz, ctx);
-                    }
-                }
-            }
-            Ok(ValueKind::AggregatePtr {
-                addr: base,
-                ty: Ty::Struct(name.clone()),
-                slot: Some(slot),
-            })
-        }
         Expr::EnumLit {
             enum_name,
             variant,
@@ -1446,23 +1635,18 @@ fn compile_expr(expr: &Expr, ctx: &mut CompilerCtx) -> Result<ValueKind, EmitErr
                     .iter()
                     .find(|f| f.name.as_str() == field.as_str())
                     .ok_or_else(|| eerr(*span, "unknown field"))?;
-                let val = load_field(addr, fld.offset, &fld.ty, ctx)?;
-                Ok(ValueKind::Scalar(val, fld.ty.clone()))
-            }
-            ValueKind::Scalar(ptr, Ty::Ref(inner)) => match *inner {
-                Ty::Struct(ty_name) => {
-                    let layout = get_struct_layout(&ty_name, ctx, *span)?;
-                    let fld = layout
-                        .fields
-                        .iter()
-                        .find(|f| f.name.as_str() == field.as_str())
-                        .ok_or_else(|| eerr(*span, "unknown field"))?;
-                    let val = load_field(ptr, fld.offset, &fld.ty, ctx)?;
+                if is_aggregate_ty(&fld.ty) {
+                    let field_addr = ctx.builder.ins().iadd_imm(addr, fld.offset as i64);
+                    Ok(ValueKind::AggregatePtr {
+                        addr: field_addr,
+                        ty: fld.ty.clone(),
+                        slot: None,
+                    })
+                } else {
+                    let val = load_field(addr, fld.offset, &fld.ty, ctx)?;
                     Ok(ValueKind::Scalar(val, fld.ty.clone()))
                 }
-                _ => Err(eerr(*span, "field access on non-struct")),
-            },
-            ValueKind::Scalar(_, _) => Err(eerr(*span, "field access on non-struct")),
+            }
             _ => Err(eerr(*span, "field access on non-struct")),
         },
         Expr::Index { base, index, span } => {
@@ -1473,10 +1657,6 @@ fn compile_expr(expr: &Expr, ctx: &mut CompilerCtx) -> Result<ValueKind, EmitErr
                     ty: Ty::Array { elem },
                     ..
                 } => (addr, *elem),
-                ValueKind::Scalar(ptr, Ty::Ref(inner)) => match *inner {
-                    Ty::Array { elem } => (ptr, *elem),
-                    _ => return Err(eerr(*span, "index on non-array")),
-                },
                 _ => return Err(eerr(*span, "index on non-array")),
             };
             let (idx_val, _) = expect_scalar(compile_expr(index, ctx)?, *span)?;
@@ -1489,8 +1669,9 @@ fn compile_expr(expr: &Expr, ctx: &mut CompilerCtx) -> Result<ValueKind, EmitErr
             let elem_addr = ctx.builder.ins().iadd(data_ptr, offset);
 
             // if elem_ty is scalar, load it. else return pointer.
+            // Ty::Ref handling removed
             match elem_ty {
-                Ty::Int | Ty::Bool | Ty::Ref(_) => {
+                Ty::Int | Ty::Bool => {
                     let cl_ty = ty_cl(elem_ty.clone(), ctx.ptr_ty);
                     let v = ctx.builder.ins().load(cl_ty, MemFlags::new(), elem_addr, 0);
                     Ok(ValueKind::Scalar(v, elem_ty.clone()))
@@ -1697,7 +1878,7 @@ fn compile_expr(expr: &Expr, ctx: &mut CompilerCtx) -> Result<ValueKind, EmitErr
 
                 match op {
                     BinOp::Add => {
-                        // quad_string_concat(sret, l, r)
+                        // qtrt_string_concat(sret, l, r)
                         let (sz, al) = ty_size_align(&Ty::Text, ctx, *span)?;
                         let slot = ctx.builder.create_sized_stack_slot(StackSlotData::new(
                             StackSlotKind::ExplicitSlot,
@@ -1706,7 +1887,7 @@ fn compile_expr(expr: &Expr, ctx: &mut CompilerCtx) -> Result<ValueKind, EmitErr
                         ));
                         let sret = ctx.builder.ins().stack_addr(ctx.ptr_ty, slot, 0);
 
-                        let fid = ctx.ext_fns.get("quad_string_concat").unwrap();
+                        let fid = ctx.ext_fns.get("qtrt_string_concat").unwrap();
                         let fref = ctx.module.declare_func_in_func(*fid, ctx.builder.func);
                         ctx.builder.ins().call(fref, &[sret, l_addr, r_addr]);
 
@@ -1717,14 +1898,14 @@ fn compile_expr(expr: &Expr, ctx: &mut CompilerCtx) -> Result<ValueKind, EmitErr
                         })
                     }
                     BinOp::Eq => {
-                        let fid = ctx.ext_fns.get("quad_string_eq").unwrap();
+                        let fid = ctx.ext_fns.get("qtrt_string_eq").unwrap();
                         let fref = ctx.module.declare_func_in_func(*fid, ctx.builder.func);
                         let call = ctx.builder.ins().call(fref, &[l_addr, r_addr]);
                         let res = ctx.builder.inst_results(call)[0];
                         Ok(ValueKind::Scalar(res, Ty::Bool))
                     }
                     BinOp::Ne => {
-                        let fid = ctx.ext_fns.get("quad_string_eq").unwrap();
+                        let fid = ctx.ext_fns.get("qtrt_string_eq").unwrap();
                         let fref = ctx.module.declare_func_in_func(*fid, ctx.builder.func);
                         let call = ctx.builder.ins().call(fref, &[l_addr, r_addr]);
                         let is_eq = ctx.builder.inst_results(call)[0];
@@ -1774,65 +1955,52 @@ fn compile_expr(expr: &Expr, ctx: &mut CompilerCtx) -> Result<ValueKind, EmitErr
         }
         Expr::Call { callee, args, span } => {
             if let Expr::Ident(fname, _) = &**callee {
-                if fname == "heap" {
-                    // heap(val) -> ref<T>
-                    let arg = &args[0];
-                    let expr = match arg {
+                if fname == "heap" || fname == "mem" {
+                    if args.len() != 1 {
+                        return Err(eerr(*span, "heap expects 1 arg"));
+                    }
+                    let expr = match &args[0] {
                         Arg::Pos(e) => e,
                         _ => return Err(eerr(*span, "heap expects positional arg")),
                     };
-                    // 1. Compile argument
-                    let val_kind = compile_expr(expr, ctx)?;
 
-                    // 2. Determine size of T
-                    let ty = match val_kind {
+                    let val_kind = compile_expr(expr, ctx)?;
+                    let inner_ty = match val_kind {
                         ValueKind::Scalar(_, ref t) => t.clone(),
                         ValueKind::AggregatePtr { ref ty, .. } => ty.clone(),
                     };
-                    let (sz, _al) = ty_size_align(&ty, ctx, *span)?;
+                    let (sz, _al) = ty_size_align(&inner_ty, ctx, *span)?;
 
-                    // 3. Allocate memory: quad_alloc(size)
-                    let fid = ctx.ext_fns.get("quad_alloc").unwrap();
+                    let fid = ctx.ext_fns.get("qtrt_alloc").unwrap();
                     let func_ref = ctx.module.declare_func_in_func(*fid, ctx.builder.func);
                     let size_val = ctx.builder.ins().iconst(types::I64, sz as i64);
                     let call = ctx.builder.ins().call(func_ref, &[size_val]);
                     let ptr = ctx.builder.inst_results(call)[0];
 
-                    // 4. Store value to ptr
                     match val_kind {
                         ValueKind::Scalar(v, _) => {
-                            // Scalar store
-                            // We need store_field logic but to arbitrary ptr??
-                            // Just use builder.ins().store?
-                            // Need cl_ty for store.
-                            let _cl_ty = ty_cl(ty.clone(), ctx.ptr_ty);
                             ctx.builder.ins().store(MemFlags::new(), v, ptr, 0);
                         }
                         ValueKind::AggregatePtr { addr: src, .. } => {
-                            // Aggregate copy
                             copy_memory(src, ptr, sz, ctx);
                         }
                     }
 
-                    return Ok(ValueKind::Scalar(ptr, Ty::Ref(Box::new(ty))));
-                } else if fname == "free" {
-                    // free(ref<T>) / free(text) / free(array)
-                    let arg = args
-                        .get(0)
-                        .ok_or_else(|| eerr(*span, "free expects 1 arg"))?;
+                    return Ok(ValueKind::Scalar(ptr, Ty::Ref(Box::new(inner_ty))));
+                } else if fname == "free" || fname == "del" {
                     if args.len() != 1 {
                         return Err(eerr(*span, "free expects 1 arg"));
                     }
-                    let expr = match arg {
+                    let expr = match &args[0] {
                         Arg::Pos(e) => e,
                         _ => return Err(eerr(*span, "free expects positional arg")),
                     };
-                    let val_kind = compile_expr(expr, ctx)?;
 
+                    let val_kind = compile_expr(expr, ctx)?;
                     match val_kind {
                         ValueKind::Scalar(ptr, Ty::Ref(inner)) => {
                             let (sz, _) = ty_size_align(&inner, ctx, *span)?;
-                            let fid = ctx.ext_fns.get("quad_free").unwrap();
+                            let fid = ctx.ext_fns.get("qtrt_free").unwrap();
                             let fref = ctx.module.declare_func_in_func(*fid, ctx.builder.func);
                             let size_val = ctx.builder.ins().iconst(types::I64, sz as i64);
                             ctx.builder.ins().call(fref, &[ptr, size_val]);
@@ -1841,10 +2009,11 @@ fn compile_expr(expr: &Expr, ctx: &mut CompilerCtx) -> Result<ValueKind, EmitErr
                                 Ty::Void,
                             ));
                         }
+                        // Keep compatibility with managed drops
                         ValueKind::AggregatePtr {
                             addr, ty: Ty::Text, ..
                         } => {
-                            let fid = ctx.ext_fns.get("quad_list_drop").unwrap();
+                            let fid = ctx.ext_fns.get("qtrt_list_drop").unwrap();
                             let fref = ctx.module.declare_func_in_func(*fid, ctx.builder.func);
                             let elem_sz = ctx.builder.ins().iconst(types::I64, 1);
                             ctx.builder.ins().call(fref, &[addr, elem_sz]);
@@ -1859,7 +2028,7 @@ fn compile_expr(expr: &Expr, ctx: &mut CompilerCtx) -> Result<ValueKind, EmitErr
                             ..
                         } => {
                             let (sz, _) = ty_size_align(&elem, ctx, *span)?;
-                            let fid = ctx.ext_fns.get("quad_list_drop").unwrap();
+                            let fid = ctx.ext_fns.get("qtrt_list_drop").unwrap();
                             let fref = ctx.module.declare_func_in_func(*fid, ctx.builder.func);
                             let elem_sz = ctx.builder.ins().iconst(types::I64, sz as i64);
                             ctx.builder.ins().call(fref, &[addr, elem_sz]);
@@ -1868,37 +2037,244 @@ fn compile_expr(expr: &Expr, ctx: &mut CompilerCtx) -> Result<ValueKind, EmitErr
                                 Ty::Void,
                             ));
                         }
-                        _ => return Err(eerr(*span, "free expects ref<T>, text, or array")),
+                        _ => return Err(eerr(*span, "free expects Addr<T>, text, or array")),
                     }
                 } else if fname == "deref" {
-                    // deref(ptr) -> val
-                    let arg = &args[0];
-                    let expr = match arg {
+                    if args.len() != 1 {
+                        return Err(eerr(*span, "deref expects 1 arg"));
+                    }
+                    let expr = match &args[0] {
                         Arg::Pos(e) => e,
                         _ => return Err(eerr(*span, "deref expects positional arg")),
                     };
+
                     let ptr_kind = compile_expr(expr, ctx)?;
-                    let (ptr, inner_ty) = match ptr_kind {
-                        ValueKind::Scalar(v, Ty::Ref(inner)) => (v, *inner),
-                        _ => return Err(eerr(*span, "deref expects ref<T>")),
+                    let (ptr, ty) = expect_scalar(ptr_kind, *span)?;
+                    let Ty::Ref(inner) = ty else {
+                        return Err(eerr(*span, "deref expects Addr<T>"));
                     };
 
-                    // Return as Reference (AggregatePtr) if aggregate, or Scalar load if scalar
-                    return match inner_ty {
-                        Ty::Struct(_) | Ty::Enum(_) | Ty::Array { .. } | Ty::Text => {
-                            Ok(ValueKind::AggregatePtr {
-                                addr: ptr,
-                                ty: inner_ty,
-                                slot: None, // It's on heap, not stack slot
-                            })
+                    if is_aggregate_ty(&inner) {
+                        return Ok(ValueKind::AggregatePtr {
+                            addr: ptr,
+                            ty: *inner,
+                            slot: None,
+                        });
+                    }
+
+                    let cl_ty = ty_cl(*inner.clone(), ctx.ptr_ty);
+                    let v = ctx.builder.ins().load(cl_ty, MemFlags::new(), ptr, 0);
+                    return Ok(ValueKind::Scalar(v, *inner));
+                } else if fname == "sys_alloc" {
+                    // sys_alloc(val) -> int (ptr)
+                    let arg = &args[0];
+                    let expr = match arg {
+                        Arg::Pos(e) => e,
+                        _ => return Err(eerr(*span, "sys_alloc expects positional arg")),
+                    };
+                    // 1. Compile argument
+                    let val_kind = compile_expr(expr, ctx)?;
+
+                    // 2. Determine size of T
+                    let ty = match val_kind {
+                        ValueKind::Scalar(_, ref t) => t.clone(),
+                        ValueKind::AggregatePtr { ref ty, .. } => ty.clone(),
+                    };
+                    let (sz, _al) = ty_size_align(&ty, ctx, *span)?;
+
+                    // 3. Allocate memory: qtrt_alloc(size)
+                    let fid = ctx.ext_fns.get("qtrt_alloc").unwrap();
+                    let func_ref = ctx.module.declare_func_in_func(*fid, ctx.builder.func);
+                    let size_val = ctx.builder.ins().iconst(types::I64, sz as i64);
+                    let call = ctx.builder.ins().call(func_ref, &[size_val]);
+                    let ptr = ctx.builder.inst_results(call)[0];
+
+                    // 4. Store value to ptr
+                    match val_kind {
+                        ValueKind::Scalar(v, _) => {
+                            let _cl_ty = ty_cl(ty.clone(), ctx.ptr_ty);
+                            ctx.builder.ins().store(MemFlags::new(), v, ptr, 0);
+                        }
+                        ValueKind::AggregatePtr { addr: src, .. } => {
+                            copy_memory(src, ptr, sz, ctx);
+                        }
+                    }
+
+                    return Ok(ValueKind::Scalar(ptr, Ty::Int));
+                } else if fname == "sys_dealloc" {
+                    // sys_dealloc(ptr, size) or sys_dealloc(Aggregate)
+                    let arg0 = args
+                        .get(0)
+                        .ok_or_else(|| eerr(*span, "sys_dealloc expects 1 or 2 args"))?;
+                    let expr0 = match arg0 {
+                        Arg::Pos(e) => e,
+                        _ => return Err(eerr(*span, "arg must be positional")),
+                    };
+                    let val0 = compile_expr(expr0, ctx)?;
+
+                    match val0 {
+                        ValueKind::Scalar(ptr, Ty::Int) => {
+                            // Needs size arg
+                            let arg1 = args.get(1).ok_or_else(|| {
+                                eerr(*span, "sys_dealloc(ptr) requires size argument")
+                            })?;
+                            let expr1 = match arg1 {
+                                Arg::Pos(e) => e,
+                                _ => return Err(eerr(*span, "arg must be positional")),
+                            };
+                            let (size_val, _) = expect_scalar(compile_expr(expr1, ctx)?, *span)?;
+
+                            let fid = ctx.ext_fns.get("qtrt_free").unwrap();
+                            let fref = ctx.module.declare_func_in_func(*fid, ctx.builder.func);
+                            ctx.builder.ins().call(fref, &[ptr, size_val]);
+
+                            return Ok(ValueKind::Scalar(
+                                ctx.builder.ins().iconst(types::I64, 0),
+                                Ty::Void,
+                            ));
+                        }
+                        ValueKind::AggregatePtr {
+                            addr, ty: Ty::Text, ..
+                        } => {
+                            let fid = ctx.ext_fns.get("qtrt_list_drop").unwrap();
+                            let fref = ctx.module.declare_func_in_func(*fid, ctx.builder.func);
+                            let elem_sz = ctx.builder.ins().iconst(types::I64, 1);
+                            ctx.builder.ins().call(fref, &[addr, elem_sz]);
+                            return Ok(ValueKind::Scalar(
+                                ctx.builder.ins().iconst(types::I64, 0),
+                                Ty::Void,
+                            ));
+                        }
+                        ValueKind::AggregatePtr {
+                            addr,
+                            ty: Ty::Array { elem },
+                            ..
+                        } => {
+                            let (sz, _) = ty_size_align(&elem, ctx, *span)?;
+                            let fid = ctx.ext_fns.get("qtrt_list_drop").unwrap();
+                            let fref = ctx.module.declare_func_in_func(*fid, ctx.builder.func);
+                            let elem_sz = ctx.builder.ins().iconst(types::I64, sz as i64);
+                            ctx.builder.ins().call(fref, &[addr, elem_sz]);
+                            return Ok(ValueKind::Scalar(
+                                ctx.builder.ins().iconst(types::I64, 0),
+                                Ty::Void,
+                            ));
                         }
                         _ => {
-                            // Scalar load
-                            let cl_ty = ty_cl(inner_ty.clone(), ctx.ptr_ty);
-                            let v = ctx.builder.ins().load(cl_ty, MemFlags::new(), ptr, 0);
-                            Ok(ValueKind::Scalar(v, inner_ty))
+                            return Err(eerr(
+                                *span,
+                                "sys_dealloc expects int (ptr) or managed type",
+                            ));
                         }
+                    }
+                } else if fname == "alloc_bytes" {
+                    // alloc_bytes(size) -> int
+                    let arg = &args[0];
+                    let expr = match arg {
+                        Arg::Pos(e) => e,
+                        _ => return Err(eerr(*span, "alloc_bytes expects positional arg")),
                     };
+                    let (size_val, _) = expect_scalar(compile_expr(expr, ctx)?, *span)?;
+                    let fid = ctx.ext_fns.get("qtrt_alloc").unwrap();
+                    let func_ref = ctx.module.declare_func_in_func(*fid, ctx.builder.func);
+                    let call = ctx.builder.ins().call(func_ref, &[size_val]);
+                    let ptr = ctx.builder.inst_results(call)[0];
+                    return Ok(ValueKind::Scalar(ptr, Ty::Int));
+                } else if fname == "ptr_get_int" {
+                    // ptr_get_int(ptr, idx) -> int
+                    // *(ptr + idx * 8)
+                    let ptr_val =
+                        expect_scalar(compile_expr(get_pos_arg(args, 0, *span)?, ctx)?, *span)?.0;
+                    let idx_val =
+                        expect_scalar(compile_expr(get_pos_arg(args, 1, *span)?, ctx)?, *span)?.0;
+
+                    let offset = ctx.builder.ins().imul_imm(idx_val, 8);
+                    let addr = ctx.builder.ins().iadd(ptr_val, offset);
+                    let v = ctx.builder.ins().load(types::I64, MemFlags::new(), addr, 0);
+                    return Ok(ValueKind::Scalar(v, Ty::Int));
+                } else if fname == "ptr_set_int" {
+                    // ptr_set_int(ptr, idx, val) -> void
+                    let ptr_val =
+                        expect_scalar(compile_expr(get_pos_arg(args, 0, *span)?, ctx)?, *span)?.0;
+                    let idx_val =
+                        expect_scalar(compile_expr(get_pos_arg(args, 1, *span)?, ctx)?, *span)?.0;
+                    let val =
+                        expect_scalar(compile_expr(get_pos_arg(args, 2, *span)?, ctx)?, *span)?.0;
+
+                    let offset = ctx.builder.ins().imul_imm(idx_val, 8);
+                    let addr = ctx.builder.ins().iadd(ptr_val, offset);
+                    ctx.builder.ins().store(MemFlags::new(), val, addr, 0);
+                    return Ok(ValueKind::Scalar(
+                        ctx.builder.ins().iconst(types::I64, 0),
+                        Ty::Void,
+                    ));
+                } else if fname == "ptr_get_byte" {
+                    // Used for text or bool?
+                    // ptr_get_byte(ptr, idx) -> int (byte)
+                    let ptr_val =
+                        expect_scalar(compile_expr(get_pos_arg(args, 0, *span)?, ctx)?, *span)?.0;
+                    let idx_val =
+                        expect_scalar(compile_expr(get_pos_arg(args, 1, *span)?, ctx)?, *span)?.0;
+
+                    let addr = ctx.builder.ins().iadd(ptr_val, idx_val); // byte offset
+                    let v = ctx.builder.ins().load(types::I8, MemFlags::new(), addr, 0);
+                    let v_ext = ctx.builder.ins().uextend(types::I64, v);
+                    return Ok(ValueKind::Scalar(v_ext, Ty::Int));
+                } else if fname == "ptr_set_byte" {
+                    // ptr_set_byte(ptr, idx, val)
+                    let ptr_val =
+                        expect_scalar(compile_expr(get_pos_arg(args, 0, *span)?, ctx)?, *span)?.0;
+                    let idx_val =
+                        expect_scalar(compile_expr(get_pos_arg(args, 1, *span)?, ctx)?, *span)?.0;
+                    let val =
+                        expect_scalar(compile_expr(get_pos_arg(args, 2, *span)?, ctx)?, *span)?.0;
+
+                    let addr = ctx.builder.ins().iadd(ptr_val, idx_val);
+                    let val_byte = ctx.builder.ins().ireduce(types::I8, val);
+                    ctx.builder.ins().store(MemFlags::new(), val_byte, addr, 0);
+                    return Ok(ValueKind::Scalar(
+                        ctx.builder.ins().iconst(types::I64, 0),
+                        Ty::Void,
+                    ));
+                } else if fname == "ptr_get_text" {
+                    // ptr_get_text(ptr, idx) -> text
+                    let ptr_val =
+                        expect_scalar(compile_expr(get_pos_arg(args, 0, *span)?, ctx)?, *span)?.0;
+                    let idx_val =
+                        expect_scalar(compile_expr(get_pos_arg(args, 1, *span)?, ctx)?, *span)?.0;
+
+                    let offset = ctx.builder.ins().imul_imm(idx_val, 24); // 24 bytes per text
+                    let addr = ctx.builder.ins().iadd(ptr_val, offset);
+
+                    return Ok(ValueKind::AggregatePtr {
+                        addr,
+                        ty: Ty::Text,
+                        slot: None,
+                    });
+                } else if fname == "ptr_set_text" {
+                    // ptr_set_text(ptr, idx, val)
+                    let ptr_val =
+                        expect_scalar(compile_expr(get_pos_arg(args, 0, *span)?, ctx)?, *span)?.0;
+                    let idx_val =
+                        expect_scalar(compile_expr(get_pos_arg(args, 1, *span)?, ctx)?, *span)?.0;
+                    let val_expr = get_pos_arg(args, 2, *span)?;
+                    let val_kind = compile_expr(val_expr, ctx)?;
+
+                    let src_addr = match val_kind {
+                        ValueKind::AggregatePtr {
+                            addr, ty: Ty::Text, ..
+                        } => addr,
+                        _ => return Err(eerr(*span, "ptr_set_text expects text value")),
+                    };
+
+                    let offset = ctx.builder.ins().imul_imm(idx_val, 24);
+                    let dst_addr = ctx.builder.ins().iadd(ptr_val, offset);
+
+                    copy_memory(src_addr, dst_addr, 24, ctx);
+                    return Ok(ValueKind::Scalar(
+                        ctx.builder.ins().iconst(types::I64, 0),
+                        Ty::Void,
+                    ));
                 }
             }
 
@@ -1915,9 +2291,9 @@ fn compile_expr(expr: &Expr, ctx: &mut CompilerCtx) -> Result<ValueKind, EmitErr
                     match val_kind {
                         ValueKind::Scalar(v, Ty::Int) => {
                             let sym = if wants_newline {
-                                "quad_echo_i64"
+                                "qtrt_echo_i64"
                             } else {
-                                "quad_print_i64"
+                                "qtrt_print_i64"
                             };
                             let fid = ctx.ext_fns.get(sym).unwrap();
                             let func_ref = ctx.module.declare_func_in_func(*fid, ctx.builder.func);
@@ -1925,9 +2301,9 @@ fn compile_expr(expr: &Expr, ctx: &mut CompilerCtx) -> Result<ValueKind, EmitErr
                         }
                         ValueKind::Scalar(v, _) => {
                             let sym = if wants_newline {
-                                "quad_echo_cstr"
+                                "qtrt_echo_cstr"
                             } else {
-                                "quad_print_cstr"
+                                "qtrt_print_cstr"
                             };
                             let fid = ctx.ext_fns.get(sym).unwrap();
                             let func_ref = ctx.module.declare_func_in_func(*fid, ctx.builder.func);
@@ -1937,9 +2313,9 @@ fn compile_expr(expr: &Expr, ctx: &mut CompilerCtx) -> Result<ValueKind, EmitErr
                             addr, ty: Ty::Text, ..
                         } => {
                             let sym = if wants_newline {
-                                "quad_print_str"
+                                "qtrt_print_str"
                             } else {
-                                "quad_print_str_no_nl"
+                                "qtrt_print_str_no_nl"
                             };
                             let fid = ctx.ext_fns.get(sym).unwrap();
                             let func_ref = ctx.module.declare_func_in_func(*fid, ctx.builder.func);
@@ -1974,7 +2350,7 @@ fn compile_expr(expr: &Expr, ctx: &mut CompilerCtx) -> Result<ValueKind, EmitErr
                     ));
                     let sret = ctx.builder.ins().stack_addr(ctx.ptr_ty, slot, 0);
 
-                    let fid = ctx.ext_fns.get("quad_read_file").unwrap();
+                    let fid = ctx.ext_fns.get("qtrt_read_file").unwrap();
                     let fref = ctx.module.declare_func_in_func(*fid, ctx.builder.func);
                     ctx.builder.ins().call(fref, &[sret, addr]);
 
@@ -1983,6 +2359,298 @@ fn compile_expr(expr: &Expr, ctx: &mut CompilerCtx) -> Result<ValueKind, EmitErr
                         ty: Ty::Text,
                         slot: Some(slot),
                     });
+                }
+
+                if fname == "sys_write" || fname == "sys_writeln" {
+                    if args.len() != 1 {
+                        return Err(eerr(*span, format!("{fname} expects 1 arg")));
+                    }
+                    let expr = match &args[0] {
+                        Arg::Pos(e) => e,
+                        _ => return Err(eerr(*span, format!("{fname} expects positional arg"))),
+                    };
+                    let val_kind = compile_expr(expr, ctx)?;
+                    let addr = match val_kind {
+                        ValueKind::AggregatePtr {
+                            addr, ty: Ty::Text, ..
+                        } => addr,
+                        _ => return Err(eerr(*span, format!("{fname} expects text arg"))),
+                    };
+
+                    let sym = if fname == "sys_write" {
+                        "qtrt_print_str_no_nl"
+                    } else {
+                        "qtrt_print_str"
+                    };
+                    let fid = ctx.ext_fns.get(sym).unwrap();
+                    let func_ref = ctx.module.declare_func_in_func(*fid, ctx.builder.func);
+                    ctx.builder.ins().call(func_ref, &[addr]);
+
+                    return Ok(ValueKind::Scalar(
+                        ctx.builder.ins().iconst(types::I64, 0),
+                        Ty::Void,
+                    ));
+                }
+
+                if fname == "sys_read_file" {
+                    if args.len() != 1 {
+                        return Err(eerr(*span, "sys_read_file expects 1 arg"));
+                    }
+                    let expr = match &args[0] {
+                        Arg::Pos(e) => e,
+                        _ => return Err(eerr(*span, "sys_read_file expects positional arg")),
+                    };
+                    let val_kind = compile_expr(expr, ctx)?;
+                    let addr = match val_kind {
+                        ValueKind::AggregatePtr {
+                            addr, ty: Ty::Text, ..
+                        } => addr,
+                        _ => return Err(eerr(*span, "sys_read_file expects text arg")),
+                    };
+
+                    let (sz, al) = ty_size_align(&Ty::Text, ctx, *span)?;
+                    let slot = ctx.builder.create_sized_stack_slot(StackSlotData::new(
+                        StackSlotKind::ExplicitSlot,
+                        sz as u32,
+                        al.trailing_zeros() as u8,
+                    ));
+                    let sret = ctx.builder.ins().stack_addr(ctx.ptr_ty, slot, 0);
+
+                    let fid = ctx.ext_fns.get("qtrt_read_file").unwrap();
+                    let fref = ctx.module.declare_func_in_func(*fid, ctx.builder.func);
+                    ctx.builder.ins().call(fref, &[sret, addr]);
+
+                    return Ok(ValueKind::AggregatePtr {
+                        addr: sret,
+                        ty: Ty::Text,
+                        slot: Some(slot),
+                    });
+                }
+
+                if fname == "sys_panic" {
+                    if args.len() != 1 {
+                        return Err(eerr(*span, "sys_panic expects 1 arg"));
+                    }
+                    let expr = match &args[0] {
+                        Arg::Pos(e) => e,
+                        _ => return Err(eerr(*span, "sys_panic expects positional arg")),
+                    };
+                    let msg_val = compile_expr(expr, ctx)?;
+                    let addr = match msg_val {
+                        ValueKind::AggregatePtr {
+                            addr, ty: Ty::Text, ..
+                        } => addr,
+                        _ => return Err(eerr(*span, "sys_panic expects text arg")),
+                    };
+                    let msg_ptr = ctx.builder.ins().load(ctx.ptr_ty, MemFlags::new(), addr, 0);
+                    let msg_len = ctx.builder.ins().load(types::I64, MemFlags::new(), addr, 8);
+
+                    let fid = ctx.ext_fns.get("qtrt_panic").unwrap();
+                    let func_ref = ctx.module.declare_func_in_func(*fid, ctx.builder.func);
+                    ctx.builder.ins().call(func_ref, &[msg_ptr, msg_len]);
+                    ctx.builder.ins().trap(TrapCode::unwrap_user(1));
+
+                    // `trap` terminates the current block. Switch to a fresh block so later
+                    // codegen doesn't append instructions after the terminator.
+                    let after = ctx.builder.create_block();
+                    ctx.builder.switch_to_block(after);
+                    ctx.builder.seal_block(after);
+
+                    return Ok(ValueKind::Scalar(
+                        ctx.builder.ins().iconst(types::I64, 0),
+                        Ty::Void,
+                    ));
+                }
+
+                if fname == "alloc_int_array" || fname == "alloc_text_array" {
+                    if args.len() != 1 {
+                        return Err(eerr(*span, format!("{fname} expects 1 arg")));
+                    }
+                    let expr = match &args[0] {
+                        Arg::Pos(e) => e,
+                        _ => return Err(eerr(*span, format!("{fname} expects positional arg"))),
+                    };
+                    let cap_kind = compile_expr(expr, ctx)?;
+                    let (cap, cap_ty) = expect_scalar(cap_kind, *span)?;
+                    if cap_ty != Ty::Int {
+                        return Err(eerr(*span, format!("{fname} expects int cap")));
+                    }
+
+                    let elem_ty = if fname == "alloc_int_array" {
+                        Ty::Int
+                    } else {
+                        Ty::Text
+                    };
+                    let (elem_sz, _) = ty_size_align(&elem_ty, ctx, *span)?;
+                    let bytes = ctx.builder.ins().imul_imm(cap, elem_sz as i64);
+
+                    let fid = ctx.ext_fns.get("qtrt_alloc").unwrap();
+                    let func_ref = ctx.module.declare_func_in_func(*fid, ctx.builder.func);
+                    let call = ctx.builder.ins().call(func_ref, &[bytes]);
+                    let ptr = ctx.builder.inst_results(call)[0];
+
+                    return Ok(ValueKind::Scalar(ptr, Ty::Ref(Box::new(elem_ty))));
+                }
+
+                if fname == "itoa_native" {
+                    if args.len() != 1 {
+                        return Err(eerr(*span, "itoa_native expects 1 arg"));
+                    }
+                    let expr = match &args[0] {
+                        Arg::Pos(e) => e,
+                        _ => return Err(eerr(*span, "itoa_native expects positional arg")),
+                    };
+                    let n_kind = compile_expr(expr, ctx)?;
+                    let (n, nty) = expect_scalar(n_kind, *span)?;
+                    if nty != Ty::Int {
+                        return Err(eerr(*span, "itoa_native expects int"));
+                    }
+
+                    let (sz, al) = ty_size_align(&Ty::Text, ctx, *span)?;
+                    let slot = ctx.builder.create_sized_stack_slot(StackSlotData::new(
+                        StackSlotKind::ExplicitSlot,
+                        sz as u32,
+                        al.trailing_zeros() as u8,
+                    ));
+                    let sret = ctx.builder.ins().stack_addr(ctx.ptr_ty, slot, 0);
+
+                    let fid = ctx.ext_fns.get("qtrt_itoa").unwrap();
+                    let fref = ctx.module.declare_func_in_func(*fid, ctx.builder.func);
+                    ctx.builder.ins().call(fref, &[sret, n]);
+
+                    return Ok(ValueKind::AggregatePtr {
+                        addr: sret,
+                        ty: Ty::Text,
+                        slot: Some(slot),
+                    });
+                }
+
+                if fname == "atoi_native" {
+                    if args.len() != 2 {
+                        return Err(eerr(*span, "atoi_native expects 2 args"));
+                    }
+                    let s_expr = match &args[0] {
+                        Arg::Pos(e) => e,
+                        _ => return Err(eerr(*span, "atoi_native expects positional args")),
+                    };
+                    let out_expr = match &args[1] {
+                        Arg::Pos(e) => e,
+                        _ => return Err(eerr(*span, "atoi_native expects positional args")),
+                    };
+
+                    let s_kind = compile_expr(s_expr, ctx)?;
+                    let s_addr = match s_kind {
+                        ValueKind::AggregatePtr {
+                            addr, ty: Ty::Text, ..
+                        } => addr,
+                        _ => return Err(eerr(*span, "atoi_native expects text")),
+                    };
+
+                    let out_kind = compile_expr(out_expr, ctx)?;
+                    let out_ptr = match out_kind {
+                        ValueKind::Scalar(p, Ty::Ref(inner)) => match *inner {
+                            Ty::Int => p,
+                            _ => return Err(eerr(*span, "atoi_native expects Addr<int>")),
+                        },
+                        ValueKind::Scalar(p, Ty::Int) => p,
+                        _ => return Err(eerr(*span, "atoi_native expects Addr<int>")),
+                    };
+
+                    let fid = ctx.ext_fns.get("qtrt_atoi").unwrap();
+                    let fref = ctx.module.declare_func_in_func(*fid, ctx.builder.func);
+                    let call = ctx.builder.ins().call(fref, &[s_addr, out_ptr]);
+                    let res = ctx.builder.inst_results(call)[0];
+                    return Ok(ValueKind::Scalar(res, Ty::Bool));
+                }
+
+                if fname == "get_int"
+                    || fname == "set_int"
+                    || fname == "get_text"
+                    || fname == "set_text"
+                {
+                    let wants_set = fname.starts_with("set_");
+                    let wants_text = fname.ends_with("text");
+                    let elem_ty = if wants_text { Ty::Text } else { Ty::Int };
+                    let expected_args = if wants_set { 3 } else { 2 };
+                    if args.len() != expected_args {
+                        return Err(eerr(*span, format!("{fname} expects {expected_args} args")));
+                    }
+
+                    let p_expr = match &args[0] {
+                        Arg::Pos(e) => e,
+                        _ => return Err(eerr(*span, format!("{fname} expects positional args"))),
+                    };
+                    let i_expr = match &args[1] {
+                        Arg::Pos(e) => e,
+                        _ => return Err(eerr(*span, format!("{fname} expects positional args"))),
+                    };
+
+                    let ptr_kind = compile_expr(p_expr, ctx)?;
+                    let base_ptr = match ptr_kind {
+                        ValueKind::Scalar(v, Ty::Int) | ValueKind::Scalar(v, Ty::Ref(_)) => v,
+                        _ => return Err(eerr(*span, format!("{fname} expects pointer value"))),
+                    };
+
+                    // Type check removed as we don't have inner_ty
+
+                    let idx_kind = compile_expr(i_expr, ctx)?;
+                    let (idx, idx_ty) = expect_scalar(idx_kind, *span)?;
+                    if idx_ty != Ty::Int {
+                        return Err(eerr(*span, format!("{fname} index must be int")));
+                    }
+
+                    let (elem_sz, elem_al) = ty_size_align(&elem_ty, ctx, *span)?;
+                    let offset = ctx.builder.ins().imul_imm(idx, elem_sz as i64);
+                    let elem_addr = ctx.builder.ins().iadd(base_ptr, offset);
+
+                    if !wants_set {
+                        // get_*
+                        if wants_text {
+                            let slot = ctx.builder.create_sized_stack_slot(StackSlotData::new(
+                                StackSlotKind::ExplicitSlot,
+                                elem_sz as u32,
+                                elem_al.trailing_zeros() as u8,
+                            ));
+                            let sret = ctx.builder.ins().stack_addr(ctx.ptr_ty, slot, 0);
+                            copy_memory(elem_addr, sret, elem_sz, ctx);
+                            return Ok(ValueKind::AggregatePtr {
+                                addr: sret,
+                                ty: Ty::Text,
+                                slot: Some(slot),
+                            });
+                        } else {
+                            let cl_ty = ty_cl(Ty::Int, ctx.ptr_ty);
+                            let v = ctx.builder.ins().load(cl_ty, MemFlags::new(), elem_addr, 0);
+                            return Ok(ValueKind::Scalar(v, Ty::Int));
+                        }
+                    }
+
+                    // set_*
+                    let v_expr = match &args[2] {
+                        Arg::Pos(e) => e,
+                        _ => return Err(eerr(*span, format!("{fname} expects positional args"))),
+                    };
+                    let val_kind = compile_expr(v_expr, ctx)?;
+                    if wants_text {
+                        let src_addr = match val_kind {
+                            ValueKind::AggregatePtr {
+                                addr, ty: Ty::Text, ..
+                            } => addr,
+                            _ => return Err(eerr(*span, "set_text expects text value")),
+                        };
+                        copy_memory(src_addr, elem_addr, elem_sz, ctx);
+                    } else {
+                        let (v, vty) = expect_scalar(val_kind, *span)?;
+                        if vty != Ty::Int {
+                            return Err(eerr(*span, "set_int expects int value"));
+                        }
+                        ctx.builder.ins().store(MemFlags::new(), v, elem_addr, 0);
+                    }
+
+                    return Ok(ValueKind::Scalar(
+                        ctx.builder.ins().iconst(types::I64, 0),
+                        Ty::Void,
+                    ));
                 }
             }
 
@@ -2183,7 +2851,7 @@ fn compile_expr(expr: &Expr, ctx: &mut CompilerCtx) -> Result<ValueKind, EmitErr
                                     (ptr, len)
                                 };
 
-                                let fid = ctx.ext_fns.get("quad_panic").unwrap();
+                                let fid = ctx.ext_fns.get("qtrt_panic").unwrap();
                                 let func_ref =
                                     ctx.module.declare_func_in_func(*fid, ctx.builder.func);
                                 ctx.builder.ins().call(func_ref, &[msg_ptr, msg_len]);
@@ -2212,9 +2880,16 @@ fn compile_expr(expr: &Expr, ctx: &mut CompilerCtx) -> Result<ValueKind, EmitErr
                             ty: Ty::Struct(name),
                             ..
                         } => (name, addr),
-                        ValueKind::Scalar(_, _) => {
-                            return Err(eerr(*field_span, "method call requires struct receiver"));
-                        }
+                        ValueKind::Scalar(v, Ty::Ref(inner)) => match *inner {
+                            Ty::Struct(name) => (name, v),
+                            _ => {
+                                return Err(eerr(
+                                    *field_span,
+                                    "method call requires struct receiver",
+                                ));
+                            }
+                        },
+                        ValueKind::Scalar(v, Ty::Struct(name)) => (name, v),
                         _ => return Err(eerr(*field_span, "method call requires struct receiver")),
                     };
                     let msig = ctx
@@ -2270,6 +2945,91 @@ fn compile_expr(expr: &Expr, ctx: &mut CompilerCtx) -> Result<ValueKind, EmitErr
                     }
                 }
             } else if let Expr::Ident(fname, _) = &**callee {
+                // Struct construction via parens: `TypeName(...)`
+                // Semantics allows this as an alternative to `TypeName { field: ... }`.
+                if ctx.sem.structs.contains_key(fname) {
+                    let layout = get_struct_layout(fname, ctx, *span)?;
+                    let align_shift = layout.align.trailing_zeros() as u8;
+                    let slot = ctx.builder.create_sized_stack_slot(StackSlotData::new(
+                        StackSlotKind::ExplicitSlot,
+                        layout.size as u32,
+                        align_shift,
+                    ));
+                    let base = ctx.builder.ins().stack_addr(ctx.ptr_ty, slot, 0);
+
+                    if args.iter().all(|a| matches!(a, Arg::Pos(_))) {
+                        if args.len() != layout.fields.len() {
+                            return Err(eerr(
+                                *span,
+                                format!(
+                                    "struct {fname} expects {} args, got {}",
+                                    layout.fields.len(),
+                                    args.len()
+                                ),
+                            ));
+                        }
+                        for (i, a) in args.iter().enumerate() {
+                            let Arg::Pos(expr) = a else { unreachable!() };
+                            let fld = &layout.fields[i];
+                            let val = compile_expr(expr, ctx)?;
+                            match val {
+                                ValueKind::Scalar(v, _) => {
+                                    store_field(base, fld.offset, v, &fld.ty, ctx)?
+                                }
+                                ValueKind::AggregatePtr { addr: src, ty, .. } => {
+                                    let dst = ctx.builder.ins().iadd_imm(base, fld.offset as i64);
+                                    let (sz, _) = ty_size_align(&ty, ctx, *span)?;
+                                    copy_memory(src, dst, sz, ctx);
+                                }
+                            }
+                        }
+                    } else if args.iter().all(|a| matches!(a, Arg::Named { .. })) {
+                        let mut seen: HashSet<&str> = HashSet::new();
+                        for a in args {
+                            let Arg::Named {
+                                name,
+                                expr,
+                                span: nspan,
+                            } = a
+                            else {
+                                unreachable!();
+                            };
+                            let fld =
+                                layout.fields.iter().find(|f| f.name == *name).ok_or_else(
+                                    || eerr(*nspan, format!("unknown field: {name}")),
+                                )?;
+                            if !seen.insert(name.as_str()) {
+                                return Err(eerr(*nspan, format!("duplicate field: {name}")));
+                            }
+                            let val = compile_expr(expr, ctx)?;
+                            match val {
+                                ValueKind::Scalar(v, _) => {
+                                    store_field(base, fld.offset, v, &fld.ty, ctx)?
+                                }
+                                ValueKind::AggregatePtr { addr: src, ty, .. } => {
+                                    let dst = ctx.builder.ins().iadd_imm(base, fld.offset as i64);
+                                    let (sz, _) = ty_size_align(&ty, ctx, *span)?;
+                                    copy_memory(src, dst, sz, ctx);
+                                }
+                            }
+                        }
+                        if seen.len() != layout.fields.len() {
+                            return Err(eerr(*span, "missing field in struct constructor"));
+                        }
+                    } else {
+                        return Err(eerr(
+                            *span,
+                            "struct construction args must be either all positional or all named",
+                        ));
+                    }
+
+                    return Ok(ValueKind::AggregatePtr {
+                        addr: base,
+                        ty: Ty::Struct(fname.clone()),
+                        slot: Some(slot),
+                    });
+                }
+
                 let fid = ctx
                     .user_fns
                     .get(fname)
@@ -2430,6 +3190,14 @@ fn expect_scalar(v: ValueKind, span: Span) -> Result<(Value, Ty), EmitError> {
     }
 }
 
+fn get_pos_arg<'a>(args: &'a [Arg], idx: usize, span: Span) -> Result<&'a Expr, EmitError> {
+    let arg = args.get(idx).ok_or_else(|| eerr(span, "missing arg"))?;
+    match arg {
+        Arg::Pos(e) => Ok(e),
+        Arg::Named { .. } => Err(eerr(span, "expected positional args")),
+    }
+}
+
 fn ty_cl(t: Ty, ptr_ty: Type) -> Type {
     match t {
         Ty::Int => types::I64,
@@ -2462,20 +3230,6 @@ fn store_field(
 ) -> Result<(), EmitError> {
     ctx.builder.ins().store(MemFlags::new(), val, base, offset);
     let _ = ty;
-    Ok(())
-}
-
-#[allow(dead_code)]
-fn copy_struct(
-    src: Value,
-    dst: Value,
-    layout: &StructLayout,
-    ctx: &mut CompilerCtx,
-) -> Result<(), EmitError> {
-    for fld in &layout.fields {
-        let v = load_field(src, fld.offset, &fld.ty, ctx)?;
-        store_field(dst, fld.offset, v, &fld.ty, ctx)?;
-    }
     Ok(())
 }
 
@@ -2744,6 +3498,22 @@ fn collect_strings_stmt(
                 collect_strings_stmt(s, map, next);
             }
         }
+        Stmt::Foreach { iter, body, .. } => {
+            collect_strings_expr(iter, map, next);
+            for s in body {
+                collect_strings_stmt(s, map, next);
+            }
+        }
+        Stmt::Case {
+            scrutinee, arms, ..
+        } => {
+            collect_strings_expr(scrutinee, map, next);
+            for (_pat, body) in arms {
+                for s in body {
+                    collect_strings_stmt(s, map, next);
+                }
+            }
+        }
         _ => {}
     }
 }
@@ -2774,11 +3544,6 @@ fn collect_strings_expr(
         Expr::Field { base, .. } => collect_strings_expr(base, map, next),
         Expr::ArrayLit { elements, .. } => {
             for e in elements {
-                collect_strings_expr(e, map, next);
-            }
-        }
-        Expr::StructLit { fields, .. } => {
-            for (_, e, _) in fields {
                 collect_strings_expr(e, map, next);
             }
         }

@@ -1,6 +1,6 @@
+use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::Command;
-use std::fs;
 
 fn compiler_dir() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))
@@ -10,15 +10,20 @@ fn compiler_dir() -> PathBuf {
         .to_path_buf()
 }
 
-fn ensure_qtrt_release_staticlib_built(compiler_dir: &Path) {
-    // Force rebuild with PIC
+fn ensure_qtrt_release_staticlib_built(compiler_dir: &Path, cargo_target_dir: &Path) {
+    // This test must not mutate the workspace-wide target/ directory.
+    // Build into an isolated CARGO_TARGET_DIR so other test binaries remain intact.
+
+    // Force rebuild with PIC (in the isolated target dir)
     let _ = Command::new("cargo")
         .current_dir(compiler_dir)
+        .env("CARGO_TARGET_DIR", cargo_target_dir)
         .args(["clean", "-p", "qtrt"])
         .status();
 
     let st = Command::new("cargo")
         .current_dir(compiler_dir)
+        .env("CARGO_TARGET_DIR", cargo_target_dir)
         .env("RUSTFLAGS", "-C relocation-model=pic")
         .args(["build", "-p", "qtrt", "--release"])
         .status()
@@ -26,13 +31,14 @@ fn ensure_qtrt_release_staticlib_built(compiler_dir: &Path) {
     assert!(st.success(), "cargo build -p qtrt --release failed");
 }
 
-fn ensure_qtri_release_built(compiler_dir: &Path) -> PathBuf {
-    let qtri_release = compiler_dir
-        .join("target")
-        .join("release")
-        .join(if cfg!(windows) { "qtri.exe" } else { "qtri" });
+fn ensure_qtri_release_built(compiler_dir: &Path, cargo_target_dir: &Path) -> PathBuf {
+    let qtri_release =
+        cargo_target_dir
+            .join("release")
+            .join(if cfg!(windows) { "qtri.exe" } else { "qtri" });
     let st = Command::new("cargo")
         .current_dir(compiler_dir)
+        .env("CARGO_TARGET_DIR", cargo_target_dir)
         .args(["build", "-p", "qtri", "--release"])
         .status()
         .expect("failed to spawn cargo build -p qtri --release");
@@ -54,6 +60,18 @@ fn mk_temp_dir() -> PathBuf {
     dir
 }
 
+fn mk_temp_cargo_target_dir() -> PathBuf {
+    let mut dir = std::env::temp_dir();
+    let pid = std::process::id();
+    let nanos = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap()
+        .as_nanos();
+    dir.push(format!("qtri_cargo_target_{}_{}", pid, nanos));
+    fs::create_dir_all(&dir).expect("failed to create temp cargo target dir");
+    dir
+}
+
 fn write_file(dir: &Path, name: &str, content: &str) -> PathBuf {
     let path = dir.join(name);
     fs::write(&path, content).expect("failed to write file");
@@ -63,37 +81,45 @@ fn write_file(dir: &Path, name: &str, content: &str) -> PathBuf {
 #[test]
 fn quad_visibility_check() {
     let compiler_dir = compiler_dir();
-    ensure_qtrt_release_staticlib_built(&compiler_dir);
-    let qtri = ensure_qtri_release_built(&compiler_dir);
+    let cargo_target_dir = mk_temp_cargo_target_dir();
+    ensure_qtrt_release_staticlib_built(&compiler_dir, &cargo_target_dir);
+    let qtri = ensure_qtri_release_built(&compiler_dir, &cargo_target_dir);
 
     let temp_dir = mk_temp_dir();
 
     // Define a module with public and private fields
-    write_file(&temp_dir, "lib.quad", r#"
+    write_file(
+        &temp_dir,
+        "lib.quad",
+        r#"
 type Point:
     publ x: int
     priv y: int
 
 func make_point(x: int, y: int) -> Point:
-    back Point {
-        x: x,
-        y: y
-    }
-"#);
+    back Point(x: x, y: y)
+"#,
+    );
 
     // Case 1: Accessing public field should succeed
-    write_file(&temp_dir, "main_pub.quad", r#"
+    write_file(
+        &temp_dir,
+        "main_pub.quad",
+        r#"
 from "lib"
 
 func main() -> int:
     cell p: Point := make_point(10, 20)
     println(p.x)
     back 0
-"#);
+"#,
+    );
 
     let out_pub = temp_dir.join("main_pub");
+    let qtrt_dir = cargo_target_dir.join("release");
     let build_pub = Command::new(&qtri)
         .current_dir(&compiler_dir)
+        .env("QTRT_LIB_DIR", &qtrt_dir)
         .args([
             "build",
             "--lang",
@@ -112,7 +138,10 @@ func main() -> int:
     );
 
     // Case 2: Verifies that accessing a private field fails as expected
-    write_file(&temp_dir, "main_priv.quad", r#"
+    write_file(
+        &temp_dir,
+        "main_priv.quad",
+        r#"
 from "lib"
 
 func main() -> int:
@@ -120,11 +149,13 @@ func main() -> int:
     # This should be a compile error because y is private
     println(p.y)
     back 0
-"#);
+"#,
+    );
 
     let out_priv = temp_dir.join("main_priv");
     let build_priv = Command::new(&qtri)
         .current_dir(&compiler_dir)
+        .env("QTRT_LIB_DIR", &qtrt_dir)
         .args([
             "build",
             "--lang",
@@ -152,24 +183,26 @@ func main() -> int:
     }
 
     // Case 3: Accessing private field within the same module should succeed
-    write_file(&temp_dir, "same_module.quad", r#"
+    write_file(
+        &temp_dir,
+        "same_module.quad",
+        r#"
 type Point:
     publ x: int
     priv y: int
 
 func main() -> int:
-    cell p: Point := Point {
-        x: 10,
-        y: 20
-    }
+    cell p: Point := Point(x: 10, y: 20)
     # Private field access within the same module should work
     println(p.y)
     back 0
-"#);
+"#,
+    );
 
     let out_same_module = temp_dir.join("same_module");
     let build_same_module = Command::new(&qtri)
         .current_dir(&compiler_dir)
+        .env("QTRT_LIB_DIR", &qtrt_dir)
         .args([
             "build",
             "--lang",
@@ -187,22 +220,24 @@ func main() -> int:
         String::from_utf8_lossy(&build_same_module.stderr)
     );
 
-    // Case 4: Struct literal initialization with private fields from another module should fail
-    write_file(&temp_dir, "main_literal.quad", r#"
+    // Case 4: Struct construction with private fields from another module should fail
+    write_file(
+        &temp_dir,
+        "main_literal.quad",
+        r#"
 from "lib"
 
 func main() -> int:
     # This should be a compile error because y is private
-    cell p: Point := Point {
-        x: 10,
-        y: 20
-    }
+    cell p: Point := Point(x: 10, y: 20)
     back 0
-"#);
+"#,
+    );
 
     let out_literal = temp_dir.join("main_literal");
     let build_literal = Command::new(&qtri)
         .current_dir(&compiler_dir)
+        .env("QTRT_LIB_DIR", &qtrt_dir)
         .args([
             "build",
             "--lang",
@@ -224,7 +259,7 @@ func main() -> int:
         let stderr = String::from_utf8_lossy(&build_literal.stderr);
         assert!(
             stderr.contains("field y is private"),
-            "Expected 'field y is private' error for struct literal, got:\n{}",
+            "Expected 'field y is private' error for struct construction, got:\n{}",
             stderr
         );
     }

@@ -1,7 +1,7 @@
 # Tri Syntax (Strict MVP)
 
 ## Keywords (3 letters)
-use, typ, enm, cas, def, let, var, pub, prv, iff, elf, els, for, ret, brk, nxt, ovr
+use, typ, enm, cas, def, let, var, pub, prv, iff, elf, els, for, ret, brk, nxt, ovr, imp, slf, mem, del, die
 
 | Concept | Quad (4 letters) | Tri (3 letters) | Meaning |
 | --- | --- | --- | --- |
@@ -11,8 +11,7 @@ use, typ, enm, cas, def, let, var, pub, prv, iff, elf, els, for, ret, brk, nxt, 
 | Mutable binding | cell | var | Mutable local variable |
 | Continue | next | nxt | Loop continue |
 
-Stage1 reserved keywords (including unimplemented): imp, new, slf, vec, psh, opn,
-red, wrt, cls, mem, del, die
+Stage1 reserved keywords: (none)
 
 - use: import (Quad: from)
 - typ: type/struct (Quad: type)
@@ -38,9 +37,9 @@ Types are identifiers (not reserved words). Canonical spellings are: int (i64), 
 - Fixed-length arrays use `[len]type` syntax and can nest (e.g. `[2][3]int`).
 
 ## Structs
-- Define with `typ Nam { fld: typ, ... }` using braces.
+- Define with `typ Nam:` followed by indented `fld: typ` lines.
 - Each field may be prefixed with `pub` (public) or `prv` (private); omit for private.
-- Instantiate with `Nam{ fld: expr, ... }` and provide every field once.
+- Instantiate with `Nam(fld: expr, ...)` and provide every field once.
 - Access fields via `expr.fld` and assign with `foo.fld := expr`.
 - Structs may be returned from functions.
 
@@ -63,5 +62,17 @@ Types are identifiers (not reserved words). Canonical spellings are: int (i64), 
 
 ## Modules
 - `use "path/to/file"` at the top level loads another Tri source file before the current one is type-checked.
-- If the path has no extension, `.tri` is appended automatically.
+- If the path has no extension, the compiler tries `.tri` first, then `.quad` (deterministic; no heuristics).
 - Paths are resolved relative to the importing file.
+- Standard library imports starting with `std/` resolve from the repository root.
+
+## Pointers and heap allocation
+
+Tri exposes a simple typed pointer form via `Ptr<T>`.
+
+- `mem(expr) -> Ptr<T>` allocates a copy of `expr` on the heap.
+- `del(ptr)` deallocates the heap allocation.
+
+Notes:
+
+- `mem` and `del` are built-ins (and keywords), not user-defined functions.

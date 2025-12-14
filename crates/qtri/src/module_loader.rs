@@ -7,6 +7,9 @@ use crate::parse;
 
 #[derive(Debug)]
 pub enum LoadError {
+    UnknownExtension {
+        path: PathBuf,
+    },
     Lex {
         path: PathBuf,
         err: lex::LexError,
@@ -25,6 +28,9 @@ pub enum LoadError {
 impl std::fmt::Display for LoadError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
+            LoadError::UnknownExtension { path } => {
+                write!(f, "{}: unknown source file extension", path.display())
+            }
             LoadError::Lex { path, err } => write!(f, "{}: lex error: {}", path.display(), err),
             LoadError::Parse { path, err } => write!(f, "{}: parse error: {}", path.display(), err),
             LoadError::Io { path, span, err } => match span {
@@ -50,9 +56,13 @@ pub fn load_program(lang: Language, entry: &Path) -> Result<LinkedProgram, LoadE
     let mut funcs = Vec::new();
     let mut visited = HashSet::<PathBuf>::new();
     let mut source_map = Vec::new();
+
+    // Resolve entry point extension if needed (deterministic: by selected language)
+    let entry_resolved = resolve_extension(lang, entry);
+
     load_one(
         lang,
-        entry,
+        &entry_resolved,
         None,
         &mut visited,
         &mut source_map,
@@ -68,19 +78,49 @@ pub fn load_program(lang: Language, entry: &Path) -> Result<LinkedProgram, LoadE
     })
 }
 
-fn append_default_extension(lang: Language, path: &Path) -> PathBuf {
+fn repo_root() -> PathBuf {
+    // CARGO_MANIFEST_DIR points at the qtri crate directory.
+    // We want the workspace root (repo root), so go up: crates/qtri -> crates -> <repo>.
+    let qtri_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let crates_dir = qtri_dir.parent().expect("bad CARGO_MANIFEST_DIR");
+    crates_dir
+        .parent()
+        .expect("bad CARGO_MANIFEST_DIR")
+        .to_path_buf()
+}
+
+fn other_lang(lang: Language) -> Language {
+    match lang {
+        Language::Quad => Language::Tri,
+        Language::Tri => Language::Quad,
+    }
+}
+
+fn resolve_extension(lang: Language, path: &Path) -> PathBuf {
     if path.extension().is_some() {
         return path.to_path_buf();
     }
 
-    let mut with_ext = path.to_path_buf();
-    let ext = match lang {
-        Language::Quad => "quad",
-        Language::Tri => "tri",
+    // Deterministic cross-language resolution (spec-defined):
+    // try current language first, then the other language.
+    let primary = match lang {
+        Language::Quad => path.with_extension("quad"),
+        Language::Tri => path.with_extension("tri"),
     };
+    if primary.exists() {
+        return primary;
+    }
 
-    with_ext.set_extension(ext);
-    with_ext
+    let secondary = match other_lang(lang) {
+        Language::Quad => path.with_extension("quad"),
+        Language::Tri => path.with_extension("tri"),
+    };
+    if secondary.exists() {
+        return secondary;
+    }
+
+    // If neither exists, keep the error path deterministic.
+    primary
 }
 
 fn load_one(
@@ -103,6 +143,18 @@ fn load_one(
         return Ok(());
     }
 
+    // Determine language from file extension (no fallback: unknown extensions are errors)
+    let file_lang = match canonical.extension().and_then(|s| s.to_str()) {
+        Some("quad") => Language::Quad,
+        Some("tri") => Language::Tri,
+        Some(_) => {
+            return Err(LoadError::UnknownExtension {
+                path: canonical.clone(),
+            });
+        }
+        None => lang,
+    };
+
     let file_id = source_map.len();
     source_map.push(canonical.clone());
 
@@ -112,7 +164,7 @@ fn load_one(
         err: e,
     })?;
 
-    let tokens = lex::lex_str(lang, &src, file_id).map_err(|err| LoadError::Lex {
+    let tokens = lex::lex_str(file_lang, &src, file_id).map_err(|err| LoadError::Lex {
         path: canonical.clone(),
         err,
     })?;
@@ -127,10 +179,20 @@ fn load_one(
         .unwrap_or_else(|| PathBuf::from("."));
 
     for import in parsed.imports {
-        let target = base_dir.join(&import.path);
-        let target = append_default_extension(lang, &target);
+        let target_base = if import.path.starts_with("std/") {
+            // Standard library modules are resolved from the repository root.
+            repo_root().join(&import.path)
+        } else {
+            // All other imports are resolved relative to the importing file.
+            base_dir.join(&import.path)
+        };
+
+        // Extensionless imports map to the current file language only.
+        // Cross-language imports must specify the extension explicitly.
+        let target = resolve_extension(file_lang, &target_base);
+
         load_one(
-            lang,
+            file_lang,
             &target,
             Some(import.span),
             visited,
@@ -217,5 +279,24 @@ mod tests {
         let names: Vec<_> = program.funcs.iter().map(|f| f.name.as_str()).collect();
 
         assert_eq!(names, ["b", "a"]);
+    }
+
+    #[test]
+    fn loads_mixed_languages() {
+        let dir = tempdir().unwrap();
+        let root = dir.path();
+
+        // Quad imports Tri
+        write_file(root, "helper.tri", "def help() -> int:\n    ret 42\n");
+        let entry = write_file(
+            root,
+            "main.quad",
+            "from \"helper\"\n\nfunc main() -> int:\n    back help()\n",
+        );
+
+        let program = load_program(Language::Quad, &entry).expect("program loads");
+        let names: Vec<_> = program.funcs.iter().map(|f| f.name.as_str()).collect();
+
+        assert_eq!(names, ["help", "main"]);
     }
 }

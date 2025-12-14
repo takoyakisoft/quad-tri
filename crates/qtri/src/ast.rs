@@ -71,7 +71,6 @@ pub struct Param {
     pub name: String,
     pub ty: String,
     pub mutable: bool,
-    #[allow(dead_code)]
     pub vis: Visibility,
     pub span: Span,
 }
@@ -93,15 +92,20 @@ pub enum Stmt {
     If {
         arms: Vec<(Expr, Vec<Stmt>)>,
         else_body: Option<Vec<Stmt>>,
-        #[allow(dead_code)]
         span: Span,
     },
     While {
         cond: Expr,
         body: Vec<Stmt>,
-        #[allow(dead_code)]
         span: Span,
     }, // loop <cond>:
+    Foreach {
+        name: String, // loop variable name
+        ty: String,   // loop variable type
+        iter: Expr,   // iterator object expression
+        body: Vec<Stmt>,
+        span: Span,
+    },
     Case {
         scrutinee: Expr,
         arms: Vec<(Pattern, Vec<Stmt>)>,
@@ -187,11 +191,6 @@ pub enum Expr {
         elements: Vec<Expr>,
         span: Span,
     },
-    StructLit {
-        name: String,
-        fields: Vec<(String, Expr, Span)>,
-        span: Span,
-    },
     EnumLit {
         enum_name: String,
         variant: String,
@@ -238,7 +237,6 @@ impl Expr {
             Expr::Str(_, s) => *s,
             Expr::Ident(_, s) => *s,
             Expr::ArrayLit { span, .. } => *span,
-            Expr::StructLit { span, .. } => *span,
             Expr::EnumLit { span, .. } => *span,
             Expr::Index { span, .. } => *span,
             Expr::Field { span, .. } => *span,

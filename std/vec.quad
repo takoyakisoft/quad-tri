@@ -1,0 +1,123 @@
+type IntVec:
+    handle: int # [len: int, cap: int, data: int (ptr)]
+
+impl IntVec:
+    func make(cap: int) -> IntVec:
+        cell cap2: int := cap
+        when cap2 <= 0:
+            cap2 := 8
+        cell h: int := alloc_bytes(24)
+        cell d: int := alloc_bytes(cap2 * 8)
+        ptr_set_int(h, 0, 0)   # len
+        ptr_set_int(h, 1, cap2) # cap
+        ptr_set_int(h, 2, d)   # data
+        back IntVec(handle: h)
+
+    func push(self, val: int) -> void:
+        cell len: int := ptr_get_int(self.handle, 0)
+        cell cap: int := ptr_get_int(self.handle, 1)
+        cell data: int := ptr_get_int(self.handle, 2)
+
+        when len == cap:
+            cell new_cap: int := cap * 2
+            cell new_data: int := alloc_bytes(new_cap * 8)
+            cell i: int := 0
+            loop 1==1:
+                when i == len:
+                    stop
+                ptr_set_int(new_data, i, ptr_get_int(data, i))
+                i := i + 1
+            
+            sys_dealloc(data, cap * 8)
+            ptr_set_int(self.handle, 1, new_cap)
+            ptr_set_int(self.handle, 2, new_data)
+            data := new_data
+            cap := new_cap
+        
+        ptr_set_int(data, len, val)
+        ptr_set_int(self.handle, 0, len + 1)
+
+    func get(self, idx: int) -> int:
+        cell len: int := ptr_get_int(self.handle, 0)
+        when idx < 0 || idx >= len:
+            sys_panic("index out of bounds")
+        cell data: int := ptr_get_int(self.handle, 2)
+        back ptr_get_int(data, idx)
+
+    func set(self, idx: int, val: int) -> void:
+        cell len: int := ptr_get_int(self.handle, 0)
+        when idx < 0 || idx >= len:
+            sys_panic("index out of bounds")
+        cell data: int := ptr_get_int(self.handle, 2)
+        ptr_set_int(data, idx, val)
+
+    func len(self) -> int:
+        back ptr_get_int(self.handle, 0)
+
+    func free(self) -> void:
+        cell cap: int := ptr_get_int(self.handle, 1)
+        cell data: int := ptr_get_int(self.handle, 2)
+        sys_dealloc(data, cap * 8)
+        sys_dealloc(self.handle, 24)
+
+type TextVec:
+    handle: int # [len: int, cap: int, data: int (ptr)]
+
+impl TextVec:
+    func make(cap: int) -> TextVec:
+        cell cap2: int := cap
+        when cap2 <= 0:
+            cap2 := 8
+        cell h: int := alloc_bytes(24)
+        cell d: int := alloc_bytes(cap2 * 24) # FatPtrs are 24 bytes
+        ptr_set_int(h, 0, 0)
+        ptr_set_int(h, 1, cap2)
+        ptr_set_int(h, 2, d)
+        back TextVec(handle: h)
+
+    func push(self, val: text) -> void:
+        cell len: int := ptr_get_int(self.handle, 0)
+        cell cap: int := ptr_get_int(self.handle, 1)
+        cell data: int := ptr_get_int(self.handle, 2)
+
+        when len == cap:
+            cell new_cap: int := cap * 2
+            cell new_data: int := alloc_bytes(new_cap * 24)
+            cell i: int := 0
+            loop 1==1:
+                when i == len:
+                    stop
+                ptr_set_text(new_data, i, ptr_get_text(data, i))
+                i := i + 1
+            
+            sys_dealloc(data, cap * 24)
+            ptr_set_int(self.handle, 1, new_cap)
+            ptr_set_int(self.handle, 2, new_data)
+            data := new_data
+            cap := new_cap
+        
+        ptr_set_text(data, len, val)
+        ptr_set_int(self.handle, 0, len + 1)
+
+    func get(self, idx: int) -> text:
+        cell len: int := ptr_get_int(self.handle, 0)
+        when idx < 0 || idx >= len:
+            sys_panic("index out of bounds")
+        cell data: int := ptr_get_int(self.handle, 2)
+        back ptr_get_text(data, idx)
+
+    func set(self, idx: int, val: text) -> void:
+        cell len: int := ptr_get_int(self.handle, 0)
+        when idx < 0 || idx >= len:
+            sys_panic("index out of bounds")
+        cell data: int := ptr_get_int(self.handle, 2)
+        ptr_set_text(data, idx, val)
+
+    func len(self) -> int:
+        back ptr_get_int(self.handle, 0)
+
+    func free(self) -> void:
+        cell cap: int := ptr_get_int(self.handle, 1)
+        cell data: int := ptr_get_int(self.handle, 2)
+        sys_dealloc(data, cap * 24)
+        sys_dealloc(self.handle, 24)

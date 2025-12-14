@@ -1,0 +1,12 @@
+func atoi(s: text) -> Result<int, text>:
+    cell p: Addr<int> := heap(0)
+    when atoi_native(s, p):
+        bind val: int := deref(p)
+        free(p)
+        back Result<int, text>::Ok(val)
+    else:
+        free(p)
+        back Result<int, text>::Err("invalid number")
+
+func itoa(n: int) -> text:
+    back itoa_native(n)

@@ -4,7 +4,7 @@ type Big:
     c: int
 
 func main() -> int:
-    cell obj: Big := Big{ a: 10, b: 20, c: 30 }
+    cell obj: Big := Big(a: 10, b: 20, c: 30)
     println(obj.a)
     println(obj.b)
     println(obj.c)

@@ -1,9 +1,9 @@
 enm Nod:
     End
-    Lnk(int, ptr<Nod>)
+    Lnk(int, Ptr<Nod>)
 
 def main() -> int:
-    var tl: ptr<Nod> := mem(Nod::End)
+    var tl: Ptr<Nod> := mem(Nod::End)
     var hd: Nod := Nod::Lnk(10, tl)
 
     cas hd:

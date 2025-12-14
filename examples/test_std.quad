@@ -1,0 +1,37 @@
+from "std/vec"
+from "std/map"
+from "std/io"
+from "std/conv"
+
+func main() -> int:
+    println("Testing Std Lib")
+
+    cell v: IntVec := IntVec.make(4)
+    v.push(10)
+    v.push(20)
+    v.push(30)
+    println("Vec len:")
+    println(itoa(v.len()))
+    println("Vec[1]:")
+    println(itoa(v.get(1)))
+
+    cell m: StrMap := StrMap.make()
+    m.insert("foo", 42)
+    m.insert("bar", 100)
+    println("Map foo:")
+    println(itoa(m.get("foo")))
+
+    when m.contains("baz"):
+        println("baz found (error)")
+    else:
+        println("baz not found (ok)")
+
+    cell num: Result<int, text> := atoi("12345")
+    case num:
+        when Result<int, text>::Ok(n):
+            println("Parsed:")
+            println(itoa(n))
+        when Result<int, text>::Err(e):
+            println(e)
+
+    back 0
