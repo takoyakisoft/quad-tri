@@ -1,11 +1,11 @@
 func atoi(s: text) -> Result<int, text>:
-    cell p: Addr<int> := heap(0)
+    cell p: Addr<int> := alloc(0)
     when atoi_native(s, p):
         bind val: int := deref(p)
-        free(p)
+        dealloc(p)
         back Result<int, text>::Ok(val)
     else:
-        free(p)
+        dealloc(p)
         back Result<int, text>::Err("invalid number")
 
 func itoa(n: int) -> text:

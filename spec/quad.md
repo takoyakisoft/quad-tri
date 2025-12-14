@@ -71,9 +71,9 @@ logic:   &&  ||
 
 Quad exposes a simple typed pointer form via `Addr<T>`.
 
-- `heap(expr) -> Addr<T>` allocates a copy of `expr` on the heap.
+- `alloc(expr) -> Addr<T>` allocates a copy of `expr` on the heap.
 - `deref(ptr) -> T` loads the value pointed to by `ptr`.
-- `free(ptr)` deallocates the heap allocation.
+- `dealloc(ptr)` deallocates the heap allocation.
 
 Notes:
 

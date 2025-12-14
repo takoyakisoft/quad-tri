@@ -70,8 +70,8 @@ Types are identifiers (not reserved words). Canonical spellings are: int (i64), 
 
 Tri exposes a simple typed pointer form via `Ptr<T>`.
 
-- `mem(expr) -> Ptr<T>` allocates a copy of `expr` on the heap.
-- `del(ptr)` deallocates the heap allocation.
+- `alloc(expr) -> Ptr<T>` allocates a copy of `expr` on the heap.
+- `dealloc(ptr)` deallocates the heap allocation.
 
 Notes:
 

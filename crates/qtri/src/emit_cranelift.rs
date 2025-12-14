@@ -1961,13 +1961,13 @@ fn compile_expr(expr: &Expr, ctx: &mut CompilerCtx) -> Result<ValueKind, EmitErr
         }
         Expr::Call { callee, args, span } => {
             if let Expr::Ident(fname, _) = &**callee {
-                if fname == "heap" || fname == "mem" || fname == "alloc" {
+                if fname == "alloc" {
                     if args.len() != 1 {
-                        return Err(eerr(*span, "heap/alloc expects 1 arg"));
+                        return Err(eerr(*span, "alloc expects 1 arg"));
                     }
                     let expr = match &args[0] {
                         Arg::Pos(e) => e,
-                        _ => return Err(eerr(*span, "heap/alloc expects positional arg")),
+                        _ => return Err(eerr(*span, "alloc expects positional arg")),
                     };
 
                     let val_kind = compile_expr(expr, ctx)?;
@@ -1993,13 +1993,13 @@ fn compile_expr(expr: &Expr, ctx: &mut CompilerCtx) -> Result<ValueKind, EmitErr
                     }
 
                     return Ok(ValueKind::Scalar(ptr, Ty::Ref(Box::new(inner_ty))));
-                } else if fname == "free" || fname == "del" || fname == "dealloc" {
+                } else if fname == "dealloc" {
                     if args.len() != 1 {
-                        return Err(eerr(*span, "free/dealloc expects 1 arg"));
+                        return Err(eerr(*span, "dealloc expects 1 arg"));
                     }
                     let expr = match &args[0] {
                         Arg::Pos(e) => e,
-                        _ => return Err(eerr(*span, "free/dealloc expects positional arg")),
+                        _ => return Err(eerr(*span, "dealloc expects positional arg")),
                     };
 
                     let val_kind = compile_expr(expr, ctx)?;
@@ -2043,7 +2043,7 @@ fn compile_expr(expr: &Expr, ctx: &mut CompilerCtx) -> Result<ValueKind, EmitErr
                                 Ty::Void,
                             ));
                         }
-                        _ => return Err(eerr(*span, "free expects Addr<T>, text, or array")),
+                        _ => return Err(eerr(*span, "dealloc expects Addr<T>, text, or array")),
                     }
                 } else if fname == "deref" {
                     if args.len() != 1 {

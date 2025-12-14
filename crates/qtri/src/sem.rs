@@ -1472,31 +1472,31 @@ fn check_expr(
                 }
             } else if let Expr::Ident(fname, sp) = &**callee {
                 // Builtins with type-dependent behavior
-                if fname == "heap" || fname == "mem" || fname == "alloc" {
+                if fname == "alloc" {
                     if args.len() != 1 {
-                        return Err(serr(*span, "heap/alloc takes exactly 1 arg"));
+                        return Err(serr(*span, "alloc takes exactly 1 arg"));
                     }
                     let expr = match &args[0] {
                         Arg::Pos(e) => e,
                         Arg::Named { .. } => {
-                            return Err(serr(*span, "heap/alloc does not take named args"));
+                            return Err(serr(*span, "alloc does not take named args"));
                         }
                     };
                     let inner = check_expr(
                         expr, fn_ret_ty, fns, methods, scopes, enums, structs, module_id,
                     )?;
                     if inner == Ty::Void {
-                        return Err(serr(expr.span(), "cannot heap-allocate void"));
+                        return Err(serr(expr.span(), "cannot alloc void"));
                     }
                     Ok(Ty::Ref(Box::new(inner)))
-                } else if fname == "free" || fname == "del" || fname == "dealloc" {
+                } else if fname == "dealloc" {
                     if args.len() != 1 {
-                        return Err(serr(*span, "free/dealloc takes exactly 1 arg"));
+                        return Err(serr(*span, "dealloc takes exactly 1 arg"));
                     }
                     let expr = match &args[0] {
                         Arg::Pos(e) => e,
                         Arg::Named { .. } => {
-                            return Err(serr(*span, "free does not take named args"));
+                            return Err(serr(*span, "dealloc does not take named args"));
                         }
                     };
                     let t = check_expr(
@@ -1504,7 +1504,7 @@ fn check_expr(
                     )?;
                     match t {
                         Ty::Ref(_) | Ty::Text | Ty::Array { .. } => Ok(Ty::Void),
-                        _ => Err(serr(expr.span(), "free expects Addr<T>, text, or array")),
+                        _ => Err(serr(expr.span(), "dealloc expects Addr<T>, text, or array")),
                     }
                 } else if fname == "deref" {
                     if args.len() != 1 {

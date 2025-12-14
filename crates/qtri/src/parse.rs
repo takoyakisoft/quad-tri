@@ -1229,7 +1229,7 @@ mod tests {
 
     #[test]
     fn parses_quad_heap_and_stack_struct_example() {
-        let src = "type User:\n    publ name: text\n    publ age: int\n\nfunc main() -> int:\n    # ---------------------------------------------------\n    # 1. Stack allocation\n    # ---------------------------------------------------\n    cell u: User := User(name: \"Bob\", age: 20)\n    \n    # Field access uses the dot operator\n    println(u.name)\n\n\n    # ---------------------------------------------------\n    # 2. Heap allocation\n    # ---------------------------------------------------\n    # Passing the struct value to heap() moves it to the heap and returns Addr<User>.\n    \n    cell p: Addr<User> := heap(User(name: \"Alice\", age: 30))\n\n    # Pointer access supports automatic dereference\n    println(p.name)\n\n    # Heap values must be freed\n    free(p)\n\n    back 0\n";
+        let src = "type User:\n    publ name: text\n    publ age: int\n\nfunc main() -> int:\n    # ---------------------------------------------------\n    # 1. Stack allocation\n    # ---------------------------------------------------\n    cell u: User := User(name: \"Bob\", age: 20)\n    \n    # Field access uses the dot operator\n    println(u.name)\n\n\n    # ---------------------------------------------------\n    # 2. Heap allocation\n    # ---------------------------------------------------\n    # Passing the struct value to alloc() moves it to the heap and returns Addr<User>.\n    \n    cell p: Addr<User> := alloc(User(name: \"Alice\", age: 30))\n\n    # Pointer access supports automatic dereference\n    println(p.name)\n\n    # Heap values must be freed\n    dealloc(p)\n\n    back 0\n";
 
         let tokens = lex::lex_str(Language::Quad, src, 0).expect("lexing succeeds");
         let _ = parse_program(&tokens).expect("program parses");
@@ -1237,7 +1237,7 @@ mod tests {
 
     #[test]
     fn parses_tri_heap_and_stack_struct_example() {
-        let src = "typ Usr:\n    pub nam: text\n    pub age: int\n\ndef main() -> int:\n    # ---------------------------------------------------\n    # 1. Stack allocation\n    # ---------------------------------------------------\n    var u: Usr := Usr(nam: \"Bob\", age: 20)\n    \n    println(u.nam)\n\n\n    # ---------------------------------------------------\n    # 2. Heap allocation\n    # ---------------------------------------------------\n    # Wrap with mem()\n    var p: Ptr<Usr> := mem(Usr(nam: \"Alice\", age: 30))\n\n    println(p.nam)\n\n    # Free the heap allocation\n    del(p)\n\n    ret 0\n";
+        let src = "typ Usr:\n    pub nam: text\n    pub age: int\n\ndef main() -> int:\n    # ---------------------------------------------------\n    # 1. Stack allocation\n    # ---------------------------------------------------\n    var u: Usr := Usr(nam: \"Bob\", age: 20)\n    \n    println(u.nam)\n\n\n    # ---------------------------------------------------\n    # 2. Heap allocation\n    # ---------------------------------------------------\n    # Wrap with alloc()\n    var p: Ptr<Usr> := alloc(Usr(nam: \"Alice\", age: 30))\n\n    println(p.nam)\n\n    # Free the heap allocation\n    dealloc(p)\n\n    ret 0\n";
 
         let tokens = lex::lex_str(Language::Tri, src, 0).expect("lexing succeeds");
         let _ = parse_program(&tokens).expect("program parses");
@@ -1261,7 +1261,7 @@ mod tests {
 
     #[test]
     fn parses_quad_text_operations_example() {
-        let src = "func main() -> int:\n    cell s: text := \"Hello\"\n\n    # 1. Concatenation (+) allocates a fresh string\n    cell msg: text := s + \" World\"\n    \n    # 2. Method calls (modern) support msg.size()\n    when msg.size() > 10:\n        println(\"Too long\")\n\n    # 3. Substring returns a slice into the original buffer\n    cell sub: text := msg.sub(0, 5)  # \"Hello\"\n    \n    # 4. Search\n    when msg.has(\"World\"):\n        println(\"Found!\")\n\n    # 5. Format with placeholders\n    cell log: text := fmt(\"User: {}, ID: {}\", \"Bob\", 123)\n    println(log)\n\n    free(msg)\n    free(log)\n    \n    back 0\n";
+        let src = "func main() -> int:\n    cell s: text := \"Hello\"\n\n    # 1. Concatenation (+) allocates a fresh string\n    cell msg: text := s + \" World\"\n    \n    # 2. Method calls (modern) support msg.size()\n    when msg.size() > 10:\n        println(\"Too long\")\n\n    # 3. Substring returns a slice into the original buffer\n    cell sub: text := msg.sub(0, 5)  # \"Hello\"\n    \n    # 4. Search\n    when msg.has(\"World\"):\n        println(\"Found!\")\n\n    # 5. Format with placeholders\n    cell log: text := fmt(\"User: {}, ID: {}\", \"Bob\", 123)\n    println(log)\n\n    dealloc(msg)\n    dealloc(log)\n    \n    back 0\n";
 
         let tokens = lex::lex_str(Language::Quad, src, 0).expect("lexing succeeds");
         let _ = parse_program(&tokens).expect("program parses");
@@ -1269,7 +1269,7 @@ mod tests {
 
     #[test]
     fn parses_tri_text_operations_example() {
-        let src = "def main() -> int:\n    var s: text := \"Hello\"\n\n    # Concatenation\n    var msg: text := s + \" World\"\n\n    # Method call len()\n    iff msg.len() > 10:\n        println(\"Big\")\n\n    # Substring\n    var sub: text := msg.sub(0, 5)\n    \n    # Search\n    iff msg.has(\"World\"):\n        println(\"Yes\")\n\n    # Format\n    var log: text := fmt(\"User: {}, ID: {}\", \"Bob\", 123)\n    println(log)\n\n    del(msg)\n    del(log)\n    ret 0\n";
+        let src = "def main() -> int:\n    var s: text := \"Hello\"\n\n    # Concatenation\n    var msg: text := s + \" World\"\n\n    # Method call len()\n    iff msg.len() > 10:\n        println(\"Big\")\n\n    # Substring\n    var sub: text := msg.sub(0, 5)\n    \n    # Search\n    iff msg.has(\"World\"):\n        println(\"Yes\")\n\n    # Format\n    var log: text := fmt(\"User: {}, ID: {}\", \"Bob\", 123)\n    println(log)\n\n    dealloc(msg)\n    dealloc(log)\n    ret 0\n";
 
         let tokens = lex::lex_str(Language::Tri, src, 0).expect("lexing succeeds");
         let _ = parse_program(&tokens).expect("program parses");
