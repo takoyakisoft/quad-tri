@@ -63,7 +63,9 @@ fn main() {
         cmd.arg("-C")
             .arg(format!("link-arg={}", obj_path.display()))
             .arg("-C")
-            .arg(format!("link-arg={}", lib_path.display()));
+            .arg(format!("link-arg={}", lib_path.display()))
+            .arg("-C")
+            .arg("link-arg=-no-pie");
     }
 
     let st = cmd

@@ -27,18 +27,44 @@ fn eerr(span: Span, msg: impl Into<String>) -> EmitError {
 
 pub fn emit_module(prog: &LinkedProgram, sem: &SemInfo) -> Result<Vec<u8>, EmitError> {
     let flag_builder = settings::builder();
-    let isa_builder =
-        cranelift_native::builder().map_err(|e| eerr(Span { line: 0, col: 0 }, e.to_string()))?;
+    let isa_builder = cranelift_native::builder().map_err(|e| {
+        eerr(
+            Span {
+                file_id: 0,
+                line: 0,
+                col: 0,
+            },
+            e.to_string(),
+        )
+    })?;
     let isa = isa_builder
         .finish(settings::Flags::new(flag_builder))
-        .map_err(|e| eerr(Span { line: 0, col: 0 }, e.to_string()))?;
+        .map_err(|e| {
+            eerr(
+                Span {
+                    file_id: 0,
+                    line: 0,
+                    col: 0,
+                },
+                e.to_string(),
+            )
+        })?;
 
     let object_builder = ObjectBuilder::new(
         isa,
         "quad_module",
         cranelift_module::default_libcall_names(),
     )
-    .map_err(|e| eerr(Span { line: 0, col: 0 }, e.to_string()))?;
+    .map_err(|e| {
+        eerr(
+            Span {
+                file_id: 0,
+                line: 0,
+                col: 0,
+            },
+            e.to_string(),
+        )
+    })?;
 
     let mut module = ObjectModule::new(object_builder);
     let mut ctx = module.make_context();
@@ -66,10 +92,28 @@ pub fn emit_module(prog: &LinkedProgram, sem: &SemInfo) -> Result<Vec<u8>, EmitE
         data_ctx.define(s_null.as_bytes().to_vec().into_boxed_slice());
         let id = module
             .declare_data(gname, Linkage::Local, true, false)
-            .map_err(|e| eerr(Span { line: 0, col: 0 }, e.to_string()))?;
+            .map_err(|e| {
+                eerr(
+                    Span {
+                        file_id: 0,
+                        line: 0,
+                        col: 0,
+                    },
+                    e.to_string(),
+                )
+            })?;
         module
             .define_data(id, &data_ctx)
-            .map_err(|e| eerr(Span { line: 0, col: 0 }, e.to_string()))?;
+            .map_err(|e| {
+                eerr(
+                    Span {
+                        file_id: 0,
+                        line: 0,
+                        col: 0,
+                    },
+                    e.to_string(),
+                )
+            })?;
         data_ctx.clear();
         str_data_ids.insert(text.clone(), id);
     }
@@ -82,7 +126,16 @@ pub fn emit_module(prog: &LinkedProgram, sem: &SemInfo) -> Result<Vec<u8>, EmitE
     sig_echo_i64.params.push(AbiParam::new(types::I64));
     let id_echo_i64 = module
         .declare_function("quad_echo_i64", Linkage::Import, &sig_echo_i64)
-        .map_err(|e| eerr(Span { line: 0, col: 0 }, e.to_string()))?;
+        .map_err(|e| {
+            eerr(
+                Span {
+                    file_id: 0,
+                    line: 0,
+                    col: 0,
+                },
+                e.to_string(),
+            )
+        })?;
     ext_fns.insert("quad_echo_i64".to_string(), id_echo_i64);
 
     // quad_print_i64
@@ -90,7 +143,16 @@ pub fn emit_module(prog: &LinkedProgram, sem: &SemInfo) -> Result<Vec<u8>, EmitE
     sig_print_i64.params.push(AbiParam::new(types::I64));
     let id_print_i64 = module
         .declare_function("quad_print_i64", Linkage::Import, &sig_print_i64)
-        .map_err(|e| eerr(Span { line: 0, col: 0 }, e.to_string()))?;
+        .map_err(|e| {
+            eerr(
+                Span {
+                    file_id: 0,
+                    line: 0,
+                    col: 0,
+                },
+                e.to_string(),
+            )
+        })?;
     ext_fns.insert("quad_print_i64".to_string(), id_print_i64);
 
     // quad_echo_cstr
@@ -100,7 +162,16 @@ pub fn emit_module(prog: &LinkedProgram, sem: &SemInfo) -> Result<Vec<u8>, EmitE
         .push(AbiParam::new(module.target_config().pointer_type()));
     let id_echo_cstr = module
         .declare_function("quad_echo_cstr", Linkage::Import, &sig_echo_cstr)
-        .map_err(|e| eerr(Span { line: 0, col: 0 }, e.to_string()))?;
+        .map_err(|e| {
+            eerr(
+                Span {
+                    file_id: 0,
+                    line: 0,
+                    col: 0,
+                },
+                e.to_string(),
+            )
+        })?;
     ext_fns.insert("quad_echo_cstr".to_string(), id_echo_cstr);
 
     // quad_print_cstr
@@ -110,7 +181,16 @@ pub fn emit_module(prog: &LinkedProgram, sem: &SemInfo) -> Result<Vec<u8>, EmitE
         .push(AbiParam::new(module.target_config().pointer_type()));
     let id_print_cstr = module
         .declare_function("quad_print_cstr", Linkage::Import, &sig_print_cstr)
-        .map_err(|e| eerr(Span { line: 0, col: 0 }, e.to_string()))?;
+        .map_err(|e| {
+            eerr(
+                Span {
+                    file_id: 0,
+                    line: 0,
+                    col: 0,
+                },
+                e.to_string(),
+            )
+        })?;
     ext_fns.insert("quad_print_cstr".to_string(), id_print_cstr);
 
     // quad_alloc
@@ -121,7 +201,16 @@ pub fn emit_module(prog: &LinkedProgram, sem: &SemInfo) -> Result<Vec<u8>, EmitE
         .push(AbiParam::new(module.target_config().pointer_type()));
     let id_alloc = module
         .declare_function("quad_alloc", Linkage::Import, &sig_alloc)
-        .map_err(|e| eerr(Span { line: 0, col: 0 }, e.to_string()))?;
+        .map_err(|e| {
+            eerr(
+                Span {
+                    file_id: 0,
+                    line: 0,
+                    col: 0,
+                },
+                e.to_string(),
+            )
+        })?;
     ext_fns.insert("quad_alloc".to_string(), id_alloc);
 
     // quad_free
@@ -132,7 +221,16 @@ pub fn emit_module(prog: &LinkedProgram, sem: &SemInfo) -> Result<Vec<u8>, EmitE
     sig_free.params.push(AbiParam::new(types::I64)); // size
     let id_free = module
         .declare_function("quad_free", Linkage::Import, &sig_free)
-        .map_err(|e| eerr(Span { line: 0, col: 0 }, e.to_string()))?;
+        .map_err(|e| {
+            eerr(
+                Span {
+                    file_id: 0,
+                    line: 0,
+                    col: 0,
+                },
+                e.to_string(),
+            )
+        })?;
     ext_fns.insert("quad_free".to_string(), id_free);
 
     // quad_list_new
@@ -160,7 +258,16 @@ pub fn emit_module(prog: &LinkedProgram, sem: &SemInfo) -> Result<Vec<u8>, EmitE
     sig_list_push.params.push(AbiParam::new(types::I64)); // elem_size
     let id_list_push = module
         .declare_function("quad_list_push", Linkage::Import, &sig_list_push)
-        .map_err(|e| eerr(Span { line: 0, col: 0 }, e.to_string()))?;
+        .map_err(|e| {
+            eerr(
+                Span {
+                    file_id: 0,
+                    line: 0,
+                    col: 0,
+                },
+                e.to_string(),
+            )
+        })?;
     ext_fns.insert("quad_list_push".to_string(), id_list_push);
 
     // quad_print_str
@@ -171,7 +278,16 @@ pub fn emit_module(prog: &LinkedProgram, sem: &SemInfo) -> Result<Vec<u8>, EmitE
         .push(AbiParam::new(module.target_config().pointer_type())); // s: *mut FatPtr
     let id_print_str = module
         .declare_function("quad_print_str", Linkage::Import, &sig_print_str)
-        .map_err(|e| eerr(Span { line: 0, col: 0 }, e.to_string()))?;
+        .map_err(|e| {
+            eerr(
+                Span {
+                    file_id: 0,
+                    line: 0,
+                    col: 0,
+                },
+                e.to_string(),
+            )
+        })?;
     ext_fns.insert("quad_print_str".to_string(), id_print_str);
 
     // quad_print_str_no_nl
@@ -186,7 +302,16 @@ pub fn emit_module(prog: &LinkedProgram, sem: &SemInfo) -> Result<Vec<u8>, EmitE
             Linkage::Import,
             &sig_print_str_no_nl,
         )
-        .map_err(|e| eerr(Span { line: 0, col: 0 }, e.to_string()))?;
+        .map_err(|e| {
+            eerr(
+                Span {
+                    file_id: 0,
+                    line: 0,
+                    col: 0,
+                },
+                e.to_string(),
+            )
+        })?;
     ext_fns.insert("quad_print_str_no_nl".to_string(), id_print_str_no_nl);
 
     // quad_panic
@@ -198,7 +323,16 @@ pub fn emit_module(prog: &LinkedProgram, sem: &SemInfo) -> Result<Vec<u8>, EmitE
     sig_panic.params.push(AbiParam::new(types::I64)); // len
     let id_panic = module
         .declare_function("quad_panic", Linkage::Import, &sig_panic)
-        .map_err(|e| eerr(Span { line: 0, col: 0 }, e.to_string()))?;
+        .map_err(|e| {
+            eerr(
+                Span {
+                    file_id: 0,
+                    line: 0,
+                    col: 0,
+                },
+                e.to_string(),
+            )
+        })?;
     ext_fns.insert("quad_panic".to_string(), id_panic);
 
     // quad_string_len
@@ -210,7 +344,16 @@ pub fn emit_module(prog: &LinkedProgram, sem: &SemInfo) -> Result<Vec<u8>, EmitE
     sig_string_len.returns.push(AbiParam::new(types::I64));
     let id_string_len = module
         .declare_function("quad_string_len", Linkage::Import, &sig_string_len)
-        .map_err(|e| eerr(Span { line: 0, col: 0 }, e.to_string()))?;
+        .map_err(|e| {
+            eerr(
+                Span {
+                    file_id: 0,
+                    line: 0,
+                    col: 0,
+                },
+                e.to_string(),
+            )
+        })?;
     ext_fns.insert("quad_string_len".to_string(), id_string_len);
 
     // quad_string_concat
@@ -227,7 +370,16 @@ pub fn emit_module(prog: &LinkedProgram, sem: &SemInfo) -> Result<Vec<u8>, EmitE
         .push(AbiParam::new(module.target_config().pointer_type())); // s2: *mut FatPtr
     let id_string_concat = module
         .declare_function("quad_string_concat", Linkage::Import, &sig_string_concat)
-        .map_err(|e| eerr(Span { line: 0, col: 0 }, e.to_string()))?;
+        .map_err(|e| {
+            eerr(
+                Span {
+                    file_id: 0,
+                    line: 0,
+                    col: 0,
+                },
+                e.to_string(),
+            )
+        })?;
     ext_fns.insert("quad_string_concat".to_string(), id_string_concat);
 
     // quad_string_eq
@@ -242,7 +394,16 @@ pub fn emit_module(prog: &LinkedProgram, sem: &SemInfo) -> Result<Vec<u8>, EmitE
     sig_string_eq.returns.push(AbiParam::new(types::I8)); // bool (u8)
     let id_string_eq = module
         .declare_function("quad_string_eq", Linkage::Import, &sig_string_eq)
-        .map_err(|e| eerr(Span { line: 0, col: 0 }, e.to_string()))?;
+        .map_err(|e| {
+            eerr(
+                Span {
+                    file_id: 0,
+                    line: 0,
+                    col: 0,
+                },
+                e.to_string(),
+            )
+        })?;
     ext_fns.insert("quad_string_eq".to_string(), id_string_eq);
 
     // quad_read_file
@@ -256,7 +417,16 @@ pub fn emit_module(prog: &LinkedProgram, sem: &SemInfo) -> Result<Vec<u8>, EmitE
         .push(AbiParam::new(module.target_config().pointer_type())); // path: *const FatPtr
     let id_read_file = module
         .declare_function("quad_read_file", Linkage::Import, &sig_read_file)
-        .map_err(|e| eerr(Span { line: 0, col: 0 }, e.to_string()))?;
+        .map_err(|e| {
+            eerr(
+                Span {
+                    file_id: 0,
+                    line: 0,
+                    col: 0,
+                },
+                e.to_string(),
+            )
+        })?;
     ext_fns.insert("quad_read_file".to_string(), id_read_file);
 
     // quad_list_with_capacity
@@ -271,7 +441,16 @@ pub fn emit_module(prog: &LinkedProgram, sem: &SemInfo) -> Result<Vec<u8>, EmitE
     // returns void (data written to sret ptr)
     let id_list_cap = module
         .declare_function("quad_list_with_capacity", Linkage::Import, &sig_list_cap)
-        .map_err(|e| eerr(Span { line: 0, col: 0 }, e.to_string()))?;
+        .map_err(|e| {
+            eerr(
+                Span {
+                    file_id: 0,
+                    line: 0,
+                    col: 0,
+                },
+                e.to_string(),
+            )
+        })?;
     ext_fns.insert("quad_list_with_capacity".to_string(), id_list_cap);
 
     // quad_list_drop
@@ -283,7 +462,16 @@ pub fn emit_module(prog: &LinkedProgram, sem: &SemInfo) -> Result<Vec<u8>, EmitE
     sig_list_drop.params.push(AbiParam::new(types::I64)); // elem_size
     let id_list_drop = module
         .declare_function("quad_list_drop", Linkage::Import, &sig_list_drop)
-        .map_err(|e| eerr(Span { line: 0, col: 0 }, e.to_string()))?;
+        .map_err(|e| {
+            eerr(
+                Span {
+                    file_id: 0,
+                    line: 0,
+                    col: 0,
+                },
+                e.to_string(),
+            )
+        })?;
     ext_fns.insert("quad_list_drop".to_string(), id_list_drop);
 
     // 3. Declare all user functions first (to handle forward references)
@@ -440,9 +628,16 @@ pub fn emit_module(prog: &LinkedProgram, sem: &SemInfo) -> Result<Vec<u8>, EmitE
     }
 
     let product = module.finish();
-    Ok(product
-        .emit()
-        .map_err(|e| eerr(Span { line: 0, col: 0 }, e.to_string()))?)
+    Ok(product.emit().map_err(|e| {
+        eerr(
+            Span {
+                file_id: 0,
+                line: 0,
+                col: 0,
+            },
+            e.to_string(),
+        )
+    })?)
 }
 
 struct CompilerCtx<'a, 'b> {
@@ -2300,7 +2495,7 @@ fn get_struct_layout(
     let mut offset = 0i32;
     let mut align = 1i32;
     let mut fields = Vec::new();
-    for (fname, fty) in &sinfo.fields {
+    for (fname, fty, _) in &sinfo.fields {
         let (sz, al) = ty_size_align(fty, ctx, span)?;
         offset = align_up(offset, al);
         align = align.max(al);

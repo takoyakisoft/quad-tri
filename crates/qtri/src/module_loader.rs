@@ -49,11 +49,13 @@ pub fn load_program(lang: Language, entry: &Path) -> Result<LinkedProgram, LoadE
     let mut structs = Vec::new();
     let mut funcs = Vec::new();
     let mut visited = HashSet::<PathBuf>::new();
+    let mut source_map = Vec::new();
     load_one(
         lang,
         entry,
         None,
         &mut visited,
+        &mut source_map,
         &mut enums,
         &mut structs,
         &mut funcs,
@@ -62,6 +64,7 @@ pub fn load_program(lang: Language, entry: &Path) -> Result<LinkedProgram, LoadE
         enums,
         structs,
         funcs,
+        source_map,
     })
 }
 
@@ -85,6 +88,7 @@ fn load_one(
     path: &Path,
     import_span: Option<Span>,
     visited: &mut HashSet<PathBuf>,
+    source_map: &mut Vec<PathBuf>,
     enums: &mut Vec<crate::ast::EnumDef>,
     structs: &mut Vec<crate::ast::StructDef>,
     funcs: &mut Vec<crate::ast::Func>,
@@ -99,7 +103,16 @@ fn load_one(
         return Ok(());
     }
 
-    let tokens = lex::lex_file(lang, &canonical).map_err(|err| LoadError::Lex {
+    let file_id = source_map.len();
+    source_map.push(canonical.clone());
+
+    let src = std::fs::read_to_string(&canonical).map_err(|e| LoadError::Io {
+        path: canonical.clone(),
+        span: import_span,
+        err: e,
+    })?;
+
+    let tokens = lex::lex_str(lang, &src, file_id).map_err(|err| LoadError::Lex {
         path: canonical.clone(),
         err,
     })?;
@@ -121,6 +134,7 @@ fn load_one(
             &target,
             Some(import.span),
             visited,
+            source_map,
             enums,
             structs,
             funcs,

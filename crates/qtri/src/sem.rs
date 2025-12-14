@@ -30,7 +30,8 @@ pub struct MethodSig {
 
 #[derive(Debug, Clone)]
 pub struct StructInfo {
-    pub fields: Vec<(String, Ty)>,
+    pub fields: Vec<(String, Ty, Visibility)>,
+    pub module_id: usize,
 }
 
 #[derive(Debug, Clone)]
@@ -215,9 +216,15 @@ pub fn check(prog: &LinkedProgram) -> Result<SemInfo, SemError> {
                     "struct fields of struct type are not supported yet",
                 ));
             }
-            fields.push((f.name.clone(), fty));
+            fields.push((f.name.clone(), fty, f.vis));
         }
-        structs.insert(s.name.clone(), StructInfo { fields });
+        structs.insert(
+            s.name.clone(),
+            StructInfo {
+                fields,
+                module_id: s.span.file_id,
+            },
+        );
     }
 
     for e in &prog.enums {
@@ -316,11 +323,25 @@ pub fn check(prog: &LinkedProgram) -> Result<SemInfo, SemError> {
     }
 
     // main must exist and be int
-    let main_sig = fns
-        .get("main")
-        .ok_or_else(|| serr(Span { line: 1, col: 1 }, "missing function: main"))?;
+    let main_sig = fns.get("main").ok_or_else(|| {
+        serr(
+            Span {
+                file_id: 0,
+                line: 1,
+                col: 1,
+            },
+            "missing function: main",
+        )
+    })?;
     if main_sig.ret != Ty::Int {
-        return Err(serr(Span { line: 1, col: 1 }, "main must return int (i64)"));
+        return Err(serr(
+            Span {
+                file_id: 0,
+                line: 1,
+                col: 1,
+            },
+            "main must return int (i64)",
+        ));
     }
 
     // per-function check
@@ -445,6 +466,7 @@ fn check_func(
     methods: &HashMap<String, HashMap<String, MethodSig>>,
 ) -> Result<(), SemError> {
     let mut scopes: Vec<HashMap<String, VarInfo>> = vec![HashMap::new()];
+    let module_id = f.span.file_id;
 
     // params as immutable bindings
     for (i, (name, ty)) in sig.params.iter().enumerate() {
@@ -476,6 +498,7 @@ fn check_func(
             structs,
             &mut scopes,
             &mut loop_depth,
+            module_id,
         )?;
     }
 
@@ -500,6 +523,7 @@ fn check_stmt(
     structs: &HashMap<String, StructInfo>,
     scopes: &mut Vec<HashMap<String, VarInfo>>,
     loop_depth: &mut usize,
+    module_id: usize,
 ) -> Result<bool, SemError> {
     match st {
         Stmt::VarDecl {
@@ -514,7 +538,9 @@ fn check_stmt(
             if let Ty::Enum(ref name) = decl_ty {
                 ensure_intrinsic_enum(name, *span, structs, enums)?;
             }
-            let init_ty = check_expr(init, ret_ty, fns, methods, scopes, enums, structs)?;
+            let init_ty = check_expr(
+                init, ret_ty, fns, methods, scopes, enums, structs, module_id,
+            )?;
             if decl_ty != init_ty {
                 return Err(serr(
                     *span,
@@ -542,7 +568,9 @@ fn check_stmt(
                         format!("cannot assign to immutable binding: {name}"),
                     ));
                 }
-                let ety = check_expr(expr, ret_ty, fns, methods, scopes, enums, structs)?;
+                let ety = check_expr(
+                    expr, ret_ty, fns, methods, scopes, enums, structs, module_id,
+                )?;
                 if vty != ety {
                     return Err(serr(
                         *span,
@@ -572,14 +600,19 @@ fn check_stmt(
                     serr(*span, format!("unknown struct during assignment: {sname}"))
                 })?;
                 let mut fty = None;
-                for (fname, fty_val) in &sinfo.fields {
+                for (fname, fty_val, vis) in &sinfo.fields {
                     if fname == field {
+                        if *vis == Visibility::Private && sinfo.module_id != module_id {
+                            return Err(serr(*span, format!("field {field} is private")));
+                        }
                         fty = Some(fty_val.clone());
                         break;
                     }
                 }
                 let fty = fty.ok_or_else(|| serr(*span, format!("unknown field: {field}")))?;
-                let ety = check_expr(expr, ret_ty, fns, methods, scopes, enums, structs)?;
+                let ety = check_expr(
+                    expr, ret_ty, fns, methods, scopes, enums, structs, module_id,
+                )?;
                 if fty != ety {
                     return Err(serr(*span, "type mismatch in field assignment"));
                 }
@@ -593,7 +626,9 @@ fn check_stmt(
                         format!("cannot assign to immutable binding: {base}"),
                     ));
                 }
-                let ity = check_expr(index, ret_ty, fns, methods, scopes, enums, structs)?;
+                let ity = check_expr(
+                    index, ret_ty, fns, methods, scopes, enums, structs, module_id,
+                )?;
                 if ity != Ty::Int {
                     return Err(serr(index.span(), "index must be int"));
                 }
@@ -606,7 +641,9 @@ fn check_stmt(
                         ));
                     }
                 };
-                let ety = check_expr(expr, ret_ty, fns, methods, scopes, enums, structs)?;
+                let ety = check_expr(
+                    expr, ret_ty, fns, methods, scopes, enums, structs, module_id,
+                )?;
                 if ety != elem_ty {
                     return Err(serr(*span, "type mismatch in index assignment"));
                 }
@@ -617,7 +654,9 @@ fn check_stmt(
             // MVP: statement expression must be a call
             match expr {
                 Expr::Call { .. } => {
-                    let _ = check_expr(expr, ret_ty, fns, methods, scopes, enums, structs)?;
+                    let _ = check_expr(
+                        expr, ret_ty, fns, methods, scopes, enums, structs, module_id,
+                    )?;
                     Ok(false)
                 }
                 _ => Err(serr(
@@ -637,7 +676,9 @@ fn check_stmt(
                     let e = expr
                         .as_ref()
                         .ok_or_else(|| serr(*span, "non-void function must return a value"))?;
-                    let ety = check_expr(e, ret_ty, fns, methods, scopes, enums, structs)?;
+                    let ety = check_expr(
+                        e, ret_ty, fns, methods, scopes, enums, structs, module_id,
+                    )?;
                     if ety != *ret_ty {
                         return Err(serr(*span, "return type mismatch"));
                     }
@@ -649,15 +690,18 @@ fn check_stmt(
             arms, else_body, ..
         } => {
             for (c, b) in arms {
-                let cty = check_expr(c, ret_ty, fns, methods, scopes, enums, structs)?;
+                let cty = check_expr(
+                    c, ret_ty, fns, methods, scopes, enums, structs, module_id,
+                )?;
                 if cty != Ty::Bool {
                     return Err(serr(c.span(), "when/elif condition must be bool"));
                 }
                 scopes.push(HashMap::new());
                 let mut local_ret = false;
                 for s in b {
-                    local_ret |=
-                        check_stmt(s, ret_ty, fns, methods, enums, structs, scopes, loop_depth)?;
+                    local_ret |= check_stmt(
+                        s, ret_ty, fns, methods, enums, structs, scopes, loop_depth, module_id,
+                    )?;
                 }
                 scopes.pop();
                 let _ = local_ret;
@@ -666,8 +710,9 @@ fn check_stmt(
                 scopes.push(HashMap::new());
                 let mut local_ret = false;
                 for s in b {
-                    local_ret |=
-                        check_stmt(s, ret_ty, fns, methods, enums, structs, scopes, loop_depth)?;
+                    local_ret |= check_stmt(
+                        s, ret_ty, fns, methods, enums, structs, scopes, loop_depth, module_id,
+                    )?;
                 }
                 scopes.pop();
                 let _ = local_ret;
@@ -679,7 +724,9 @@ fn check_stmt(
             arms,
             span: _,
         } => {
-            let sty = check_expr(scrutinee, ret_ty, fns, methods, scopes, enums, structs)?;
+            let sty = check_expr(
+                scrutinee, ret_ty, fns, methods, scopes, enums, structs, module_id,
+            )?;
             let enum_name = match &sty {
                 Ty::Enum(n) => n,
                 _ => return Err(serr(scrutinee.span(), "case value must be an enum")),
@@ -740,8 +787,9 @@ fn check_stmt(
                 }
 
                 for s in body {
-                    local_ret |=
-                        check_stmt(s, ret_ty, fns, methods, enums, structs, scopes, loop_depth)?;
+                    local_ret |= check_stmt(
+                        s, ret_ty, fns, methods, enums, structs, scopes, loop_depth, module_id,
+                    )?;
                 }
                 scopes.pop();
             }
@@ -752,7 +800,9 @@ fn check_stmt(
             Ok(false)
         }
         Stmt::While { cond, body, .. } => {
-            let cty = check_expr(cond, ret_ty, fns, methods, scopes, enums, structs)?;
+            let cty = check_expr(
+                cond, ret_ty, fns, methods, scopes, enums, structs, module_id,
+            )?;
             if cty != Ty::Bool {
                 return Err(serr(cond.span(), "loop condition must be bool"));
             }
@@ -760,8 +810,9 @@ fn check_stmt(
             scopes.push(HashMap::new());
             let mut local_ret = false;
             for s in body {
-                local_ret |=
-                    check_stmt(s, ret_ty, fns, methods, enums, structs, scopes, loop_depth)?;
+                local_ret |= check_stmt(
+                    s, ret_ty, fns, methods, enums, structs, scopes, loop_depth, module_id,
+                )?;
             }
             scopes.pop();
             *loop_depth -= 1;
@@ -804,6 +855,7 @@ fn check_expr(
     scopes: &Vec<HashMap<String, VarInfo>>,
     enums: &mut HashMap<String, EnumInfo>,
     structs: &HashMap<String, StructInfo>,
+    module_id: usize,
 ) -> Result<Ty, SemError> {
     match e {
         Expr::Int(_, _) => Ok(Ty::Int),
@@ -822,14 +874,20 @@ fn check_expr(
                 .ok_or_else(|| serr(*span, format!("unknown struct: {name}")))?;
             let mut seen = HashSet::new();
             for (fname, expr, fspan) in fields {
-                let fty = sinfo
+                let (fty, vis) = sinfo
                     .fields
                     .iter()
-                    .find(|(n, _)| n == fname)
-                    .ok_or_else(|| serr(*fspan, format!("unknown field: {fname}")))?
-                    .1
-                    .clone();
-                let ety = check_expr(expr, fn_ret_ty, fns, methods, scopes, enums, structs)?;
+                    .find(|(n, _, _)| n == fname)
+                    .map(|(_, t, v)| (t.clone(), *v))
+                    .ok_or_else(|| serr(*fspan, format!("unknown field: {fname}")))?;
+
+                if vis == Visibility::Private && sinfo.module_id != module_id {
+                    return Err(serr(*fspan, format!("field {fname} is private")));
+                }
+
+                let ety = check_expr(
+                    expr, fn_ret_ty, fns, methods, scopes, enums, structs, module_id,
+                )?;
                 if ety != fty {
                     return Err(serr(*fspan, "field type mismatch"));
                 }
@@ -869,7 +927,9 @@ fn check_expr(
             }
 
             for (i, expr) in args.iter().enumerate() {
-                let ety = check_expr(expr, fn_ret_ty, fns, methods, scopes, enums, structs)?;
+                let ety = check_expr(
+                    expr, fn_ret_ty, fns, methods, scopes, enums, structs, module_id,
+                )?;
                 if ety != fields[i] {
                     return Err(serr(expr.span(), "arg type mismatch"));
                 }
@@ -877,7 +937,9 @@ fn check_expr(
             Ok(Ty::Enum(enum_name.clone()))
         }
         Expr::Field { base, field, span } => {
-            let bty = check_expr(base, fn_ret_ty, fns, methods, scopes, enums, structs)?;
+            let bty = check_expr(
+                base, fn_ret_ty, fns, methods, scopes, enums, structs, module_id,
+            )?;
             let sname = match bty {
                 Ty::Struct(n) => n,
                 Ty::Ref(inner) => match *inner {
@@ -889,18 +951,26 @@ fn check_expr(
             let sinfo = structs
                 .get(&sname)
                 .ok_or_else(|| serr(*span, format!("unknown struct: {sname}")))?;
-            let fty = sinfo
+            let (fty, vis) = sinfo
                 .fields
                 .iter()
-                .find(|(n, _)| n == field)
-                .ok_or_else(|| serr(*span, format!("unknown field: {field}")))?
-                .1
-                .clone();
+                .find(|(n, _, _)| n == field)
+                .map(|(_, t, v)| (t.clone(), *v))
+                .ok_or_else(|| serr(*span, format!("unknown field: {field}")))?;
+
+            if vis == Visibility::Private && sinfo.module_id != module_id {
+                return Err(serr(*span, format!("field {field} is private")));
+            }
+
             Ok(fty)
         }
         Expr::Index { base, index, span } => {
-            let bty = check_expr(base, fn_ret_ty, fns, methods, scopes, enums, structs)?;
-            let ity = check_expr(index, fn_ret_ty, fns, methods, scopes, enums, structs)?;
+            let bty = check_expr(
+                base, fn_ret_ty, fns, methods, scopes, enums, structs, module_id,
+            )?;
+            let ity = check_expr(
+                index, fn_ret_ty, fns, methods, scopes, enums, structs, module_id,
+            )?;
             if ity != Ty::Int {
                 return Err(serr(index.span(), "index must be int"));
             }
@@ -925,9 +995,12 @@ fn check_expr(
                 scopes,
                 enums,
                 structs,
+                module_id,
             )?;
             for e in elements.iter().skip(1) {
-                let t = check_expr(e, fn_ret_ty, fns, methods, scopes, enums, structs)?;
+                let t = check_expr(
+                    e, fn_ret_ty, fns, methods, scopes, enums, structs, module_id,
+                )?;
                 if t != first {
                     return Err(serr(e.span(), "array elements must match"));
                 }
@@ -937,7 +1010,9 @@ fn check_expr(
             })
         }
         Expr::Unary { op, expr, span } => {
-            let t = check_expr(expr, fn_ret_ty, fns, methods, scopes, enums, structs)?;
+            let t = check_expr(
+                expr, fn_ret_ty, fns, methods, scopes, enums, structs, module_id,
+            )?;
             match op {
                 UnOp::Neg if t == Ty::Int => Ok(Ty::Int),
                 UnOp::Not if t == Ty::Bool => Ok(Ty::Bool),
@@ -945,8 +1020,12 @@ fn check_expr(
             }
         }
         Expr::Binary { op, lhs, rhs, span } => {
-            let a = check_expr(lhs, fn_ret_ty, fns, methods, scopes, enums, structs)?;
-            let b = check_expr(rhs, fn_ret_ty, fns, methods, scopes, enums, structs)?;
+            let a = check_expr(
+                lhs, fn_ret_ty, fns, methods, scopes, enums, structs, module_id,
+            )?;
+            let b = check_expr(
+                rhs, fn_ret_ty, fns, methods, scopes, enums, structs, module_id,
+            )?;
             use BinOp::*;
             let r = match op {
                 Add => {
@@ -993,7 +1072,9 @@ fn check_expr(
             Ok(r)
         }
         Expr::Try { expr, span } => {
-            let in_ty = check_expr(expr, fn_ret_ty, fns, methods, scopes, enums, structs)?;
+            let in_ty = check_expr(
+                expr, fn_ret_ty, fns, methods, scopes, enums, structs, module_id,
+            )?;
             let name = match in_ty {
                 Ty::Enum(n) => n,
                 _ => return Err(serr(*span, "'?' requires Option<T> or Result<T,E>")),
@@ -1068,7 +1149,9 @@ fn check_expr(
                     }
                     match &args[0] {
                         Arg::Pos(x) => {
-                            let t = check_expr(x, fn_ret_ty, fns, methods, scopes, enums, structs)?;
+                            let t = check_expr(
+                                x, fn_ret_ty, fns, methods, scopes, enums, structs, module_id,
+                            )?;
                             if t != Ty::Int && t != Ty::Text {
                                 return Err(serr(
                                     x.span(),
@@ -1121,11 +1204,13 @@ fn check_expr(
                         enums,
                         scopes,
                         structs,
+                        module_id,
                     )?;
                     Ok(sig.ret.clone())
                 } else {
-                    let recv_ty =
-                        check_expr(base, fn_ret_ty, fns, methods, scopes, enums, structs)?;
+                    let recv_ty = check_expr(
+                        base, fn_ret_ty, fns, methods, scopes, enums, structs, module_id,
+                    )?;
 
                     // Hard-coded unwrap/expect for intrinsic Option/Result.
                     // Final surface names: unwrap/expect (not reserved keywords).
@@ -1156,6 +1241,7 @@ fn check_expr(
                                     Arg::Pos(msg) => {
                                         let mt = check_expr(
                                             msg, fn_ret_ty, fns, methods, scopes, enums, structs,
+                                            module_id,
                                         )?;
                                         if mt != Ty::Text {
                                             return Err(serr(
@@ -1224,6 +1310,7 @@ fn check_expr(
                         enums,
                         scopes,
                         structs,
+                        module_id,
                     )?;
                     Ok(sig.ret.clone())
                 }
@@ -1239,7 +1326,9 @@ fn check_expr(
                             return Err(serr(*span, "heap does not take named args"));
                         }
                     };
-                    let inner = check_expr(expr, fn_ret_ty, fns, methods, scopes, enums, structs)?;
+                    let inner = check_expr(
+                        expr, fn_ret_ty, fns, methods, scopes, enums, structs, module_id,
+                    )?;
                     if inner == Ty::Void {
                         return Err(serr(expr.span(), "cannot heap-allocate void"));
                     }
@@ -1254,7 +1343,9 @@ fn check_expr(
                             return Err(serr(*span, "free does not take named args"));
                         }
                     };
-                    let t = check_expr(expr, fn_ret_ty, fns, methods, scopes, enums, structs)?;
+                    let t = check_expr(
+                        expr, fn_ret_ty, fns, methods, scopes, enums, structs, module_id,
+                    )?;
                     match t {
                         Ty::Ref(_) | Ty::Text | Ty::Array { .. } => Ok(Ty::Void),
                         _ => Err(serr(expr.span(), "free expects ref<T>, text, or array")),
@@ -1269,7 +1360,9 @@ fn check_expr(
                             return Err(serr(*span, "deref does not take named args"));
                         }
                     };
-                    let t = check_expr(expr, fn_ret_ty, fns, methods, scopes, enums, structs)?;
+                    let t = check_expr(
+                        expr, fn_ret_ty, fns, methods, scopes, enums, structs, module_id,
+                    )?;
                     match t {
                         Ty::Ref(inner) => Ok(*inner),
                         _ => Err(serr(expr.span(), "deref expects ref<T>")),
@@ -1288,6 +1381,7 @@ fn check_expr(
                         enums,
                         scopes,
                         structs,
+                        module_id,
                     )?;
                     Ok(sig.ret.clone())
                 }
@@ -1308,6 +1402,7 @@ fn validate_args(
     enums: &mut HashMap<String, EnumInfo>,
     scopes: &Vec<HashMap<String, VarInfo>>,
     structs: &HashMap<String, StructInfo>,
+    module_id: usize,
 ) -> Result<(), SemError> {
     if args.iter().all(|a| matches!(a, Arg::Pos(_))) {
         if args.len() != expected.len() {
@@ -1325,7 +1420,9 @@ fn validate_args(
                 Arg::Pos(e) => e,
                 Arg::Named { .. } => unreachable!(),
             };
-            let xt = check_expr(expr, fn_ret_ty, fns, methods, scopes, enums, structs)?;
+            let xt = check_expr(
+                expr, fn_ret_ty, fns, methods, scopes, enums, structs, module_id,
+            )?;
             if xt != expected[i].1 {
                 return Err(serr(expr.span(), "arg type mismatch"));
             }
@@ -1366,7 +1463,9 @@ fn validate_args(
             let (expr, arg_sp) = named
                 .get(pname)
                 .ok_or_else(|| serr(span, format!("missing parameter: {pname}")))?;
-            let ety = check_expr(expr, fn_ret_ty, fns, methods, scopes, enums, structs)?;
+            let ety = check_expr(
+                expr, fn_ret_ty, fns, methods, scopes, enums, structs, module_id,
+            )?;
             if ety != *pty {
                 return Err(serr(*arg_sp, "arg type mismatch"));
             }
