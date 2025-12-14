@@ -1,18 +1,17 @@
-typ Usr {
-    nam: text,
+typ Usr:
+    nam: text
     age: int
-}
 
 imp Usr:
     def new(n: text, a: int) -> Usr:
-        var u: Usr := Usr{ nam: n, age: a }
+        var u: Usr := Usr(nam: n, age: a)
         ret u
 
     def inc(slf) -> void:
         slf.age := slf.age + 1
 
 def main() -> int:
-    var u: Usr := Usr.new("sato", 31)
+    var u: Usr := Usr("sato", 31)
     u.inc()
     println(u.age)
     ret u.age

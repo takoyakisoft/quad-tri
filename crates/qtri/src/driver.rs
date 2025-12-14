@@ -18,7 +18,12 @@ fn derr(msg: impl Into<String>) -> DriverError {
 }
 
 pub fn build_exe(prog: &LinkedProgram, sem: &SemInfo, out_exe: &Path) -> Result<(), DriverError> {
-    let tmp_dir = std::env::temp_dir().join("quad0_build");
+    let pid = std::process::id();
+    let nanos = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_err(|e| derr(format!("tmp dir timestamp: {e}")))?
+        .as_nanos();
+    let tmp_dir = std::env::temp_dir().join(format!("quad0_build_{pid}_{nanos}"));
     std::fs::create_dir_all(&tmp_dir).map_err(|e| derr(format!("tmp dir: {e}")))?;
 
     let obj_path = tmp_dir.join(if cfg!(windows) { "out.obj" } else { "out.o" });

@@ -33,7 +33,183 @@ Two indentation-based language prototypes.
 | Break | stop | brk | Break loop |
 | Continue | next | nxt | Continue loop |
 
+## Memory and pointers
+
+- Quad heap allocation uses `heap(expr) -> Addr<T>`, `deref(ptr) -> T`, and `free(ptr)`.
+- Tri heap allocation uses `mem(expr) -> Ptr<T>` and `del(ptr)`.
+
+## Standard library (prototype)
+
+The repository ships a small prototype standard library under `std/`.
+
+- `std/vec`: resizable vectors (implemented via raw pointer intrinsics)
+- `std/map`: a minimal `text -> int` map built on `std/vec`
+- `std/io`: `print`/`println` wrappers
+- `std/conv`: `atoi`/`itoa` wrappers
+- `std/os`: `args()` and process helpers
+- `std/mem`: explicit allocation helpers (renamed from the previous `std/alloc` module)
+
 ## Examples
+
+### Hello World
+
+Quad:
+
+```gdscript
+func main() -> int:
+    println("Hello, World!")
+    back 0
+```
+
+Tri:
+
+```python
+def main() -> int:
+    println("Hello, World!")
+    ret 0
+```
+
+### FizzBuzz
+
+Quad (prints 1..=20):
+
+```gdscript
+func main() -> int:
+    cell i: int := 1
+    loop i <= 20:
+        when i % 15 == 0:
+            println("FizzBuzz")
+        elif i % 3 == 0:
+            println("Fizz")
+        elif i % 5 == 0:
+            println("Buzz")
+        else:
+            println(i)
+        i := i + 1
+    back 0
+```
+
+Tri (prints 1..=20):
+
+```python
+def main() -> int:
+    var i: int := 1
+    for i <= 20:
+        iff i % 15 == 0:
+            println("FizzBuzz")
+        elf i % 3 == 0:
+            println("Fizz")
+        elf i % 5 == 0:
+            println("Buzz")
+        els:
+            println(i)
+        i := i + 1
+    ret 0
+```
+
+### Practical example: arrays + dictionary + structs + impl
+
+This example combines:
+
+- Fixed-length arrays (`[len]T`)
+- A small dictionary (std `StrMap`: `text -> int`)
+- A user-defined struct with methods (`impl`/`imp`)
+
+Quad:
+
+```gdscript
+from "std/map"
+
+type WordCounter:
+    publ m: StrMap
+
+impl WordCounter:
+    func make() -> WordCounter:
+        back WordCounter(m: StrMap.make())
+
+    func add(self, w: text) -> void:
+        when self.m.contains(w):
+            self.m.insert(w, self.m.get(w) + 1)
+        else:
+            self.m.insert(w, 1)
+
+    func drop(self) -> void:
+        free(self.m.keys)
+        free(self.m.vals)
+
+func main() -> int:
+    cell words: [6]text := [
+        "foo",
+        "bar",
+        "foo",
+        "baz",
+        "foo",
+        "bar"
+    ]
+
+    cell c: WordCounter := WordCounter.make()
+
+    cell i: int := 0
+    loop i < 6:
+        c.add(words[i])
+        i := i + 1
+
+    println("foo:")
+    println(c.m.get("foo"))
+    println("bar:")
+    println(c.m.get("bar"))
+
+    c.drop()
+    back 0
+```
+
+Tri:
+
+```python
+use "std/map"
+
+typ Wrd:
+    pub m: StrMap
+
+imp Wrd:
+    def mak(slf) -> Wrd:
+        ret Wrd(m: StrMap.make())
+
+    def add(slf, w: text) -> void:
+        iff slf.m.contains(w):
+            slf.m.insert(w, slf.m.get(w) + 1)
+        els:
+            slf.m.insert(w, 1)
+
+    def drp(slf) -> void:
+        del(slf.m.keys)
+        del(slf.m.vals)
+
+def main() -> int:
+    var wds: [6]text := [
+        "foo",
+        "bar",
+        "foo",
+        "baz",
+        "foo",
+        "bar"
+    ]
+
+    var c: Wrd := Wrd.mak()
+
+    var i: int := 0
+    for i < 6:
+        c.add(wds[i])
+        i := i + 1
+
+    println("foo:")
+    println(c.m.get("foo"))
+    println("bar:")
+    println(c.m.get("bar"))
+
+    c.drp()
+    ret 0
+```
 
 Quad uses four-letter keywords and `from` imports. A minimal module-based program (see `examples/quad/modules`):
 

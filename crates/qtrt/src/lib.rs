@@ -48,18 +48,18 @@ fn store_vec(fp: &mut FatPtr, vec: Vec<u8>, elem_size: usize) {
 }
 
 #[unsafe(no_mangle)]
-pub extern "C" fn quad_echo_i64(x: i64) {
+pub extern "C" fn qtrt_echo_i64(x: i64) {
     println!("{x}");
 }
 
 #[unsafe(no_mangle)]
-pub extern "C" fn quad_print_i64(x: i64) {
+pub extern "C" fn qtrt_print_i64(x: i64) {
     print!("{x}");
     let _ = std::io::stdout().flush();
 }
 
 #[unsafe(no_mangle)]
-pub extern "C" fn quad_echo_cstr(p: *const c_char) {
+pub extern "C" fn qtrt_echo_cstr(p: *const c_char) {
     if p.is_null() {
         println!("<null>");
         return;
@@ -73,7 +73,7 @@ pub extern "C" fn quad_echo_cstr(p: *const c_char) {
 }
 
 #[unsafe(no_mangle)]
-pub extern "C" fn quad_print_cstr(p: *const c_char) {
+pub extern "C" fn qtrt_print_cstr(p: *const c_char) {
     if p.is_null() {
         print!("<null>");
         let _ = std::io::stdout().flush();
@@ -94,7 +94,7 @@ pub extern "C" fn quad_print_cstr(p: *const c_char) {
 }
 
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn quad_alloc(size: i64) -> *mut u8 {
+pub unsafe extern "C" fn qtrt_alloc(size: i64) -> *mut u8 {
     if size <= 0 {
         return null_mut();
     }
@@ -112,7 +112,7 @@ pub unsafe extern "C" fn quad_alloc(size: i64) -> *mut u8 {
 }
 
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn quad_free(ptr: *mut u8, size: i64) {
+pub unsafe extern "C" fn qtrt_free(ptr: *mut u8, size: i64) {
     if ptr.is_null() || size <= 0 {
         return;
     }
@@ -125,12 +125,12 @@ pub unsafe extern "C" fn quad_free(ptr: *mut u8, size: i64) {
 }
 
 #[unsafe(no_mangle)]
-pub extern "C" fn quad_abort() {
+pub extern "C" fn qtrt_abort() {
     std::process::abort();
 }
 
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn quad_panic(ptr: *const u8, len: i64) {
+pub unsafe extern "C" fn qtrt_panic(ptr: *const u8, len: i64) {
     if ptr.is_null() || len <= 0 {
         eprintln!("<panic>");
         std::process::exit(1);
@@ -147,12 +147,61 @@ pub unsafe extern "C" fn quad_panic(ptr: *const u8, len: i64) {
 }
 
 #[unsafe(no_mangle)]
-pub extern "C" fn quad_list_new() -> FatPtr {
+pub unsafe extern "C" fn qtrt_itoa(sret: *mut FatPtr, n: i64) {
+    if sret.is_null() {
+        return;
+    }
+
+    let s = n.to_string();
+    let mut vec = s.into_bytes();
+    let fp = FatPtr {
+        ptr: vec.as_mut_ptr(),
+        len: vec.len(),
+        cap: vec.capacity(),
+    };
+    std::mem::forget(vec);
+    unsafe {
+        *sret = fp;
+    }
+}
+
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn qtrt_atoi(s: *const FatPtr, out: *mut i64) -> i64 {
+    if out.is_null() {
+        return 0;
+    }
+
+    unsafe {
+        *out = 0;
+    }
+
+    if s.is_null() {
+        return 0;
+    }
+
+    unsafe {
+        if (*s).ptr.is_null() {
+            return 0;
+        }
+        let slice = std::slice::from_raw_parts((*s).ptr, (*s).len);
+        let Ok(text) = std::str::from_utf8(slice) else {
+            return 0;
+        };
+        let Ok(n) = text.trim().parse::<i64>() else {
+            return 0;
+        };
+        *out = n;
+        1
+    }
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn qtrt_list_new() -> FatPtr {
     FatPtr::empty()
 }
 
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn quad_list_with_capacity(elem_size: usize, capacity: usize) -> FatPtr {
+pub unsafe extern "C" fn qtrt_list_with_capacity(elem_size: usize, capacity: usize) -> FatPtr {
     if elem_size == 0 || capacity == 0 {
         return FatPtr::empty();
     }
@@ -169,7 +218,7 @@ pub unsafe extern "C" fn quad_list_with_capacity(elem_size: usize, capacity: usi
 }
 
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn quad_list_push(list: *mut FatPtr, elem: *const u8, elem_size: usize) {
+pub unsafe extern "C" fn qtrt_list_push(list: *mut FatPtr, elem: *const u8, elem_size: usize) {
     if list.is_null() || elem.is_null() || elem_size == 0 {
         return;
     }
@@ -186,7 +235,7 @@ pub unsafe extern "C" fn quad_list_push(list: *mut FatPtr, elem: *const u8, elem
 }
 
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn quad_list_drop(list: *mut FatPtr, elem_size: usize) {
+pub unsafe extern "C" fn qtrt_list_drop(list: *mut FatPtr, elem_size: usize) {
     if list.is_null() || elem_size == 0 {
         return;
     }
@@ -205,7 +254,7 @@ pub unsafe extern "C" fn quad_list_drop(list: *mut FatPtr, elem_size: usize) {
 }
 
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn quad_print_str(s: *const FatPtr) {
+pub unsafe extern "C" fn qtrt_print_str(s: *const FatPtr) {
     unsafe {
         if s.is_null() || (*s).ptr.is_null() || (*s).len == 0 {
             return;
@@ -220,7 +269,7 @@ pub unsafe extern "C" fn quad_print_str(s: *const FatPtr) {
 }
 
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn quad_print_str_no_nl(s: *const FatPtr) {
+pub unsafe extern "C" fn qtrt_print_str_no_nl(s: *const FatPtr) {
     unsafe {
         if s.is_null() || (*s).ptr.is_null() || (*s).len == 0 {
             return;
@@ -236,7 +285,7 @@ pub unsafe extern "C" fn quad_print_str_no_nl(s: *const FatPtr) {
 }
 
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn quad_string_len(s: *const FatPtr) -> i64 {
+pub unsafe extern "C" fn qtrt_string_len(s: *const FatPtr) -> i64 {
     if s.is_null() {
         0
     } else {
@@ -245,7 +294,7 @@ pub unsafe extern "C" fn quad_string_len(s: *const FatPtr) -> i64 {
 }
 
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn quad_string_concat(s1: *const FatPtr, s2: *const FatPtr) -> FatPtr {
+pub unsafe extern "C" fn qtrt_string_concat(s1: *const FatPtr, s2: *const FatPtr) -> FatPtr {
     unsafe {
         // Treat null pointers as empty strings
         let l1 = if s1.is_null() || (*s1).ptr.is_null() {
@@ -290,7 +339,7 @@ pub unsafe extern "C" fn quad_string_concat(s1: *const FatPtr, s2: *const FatPtr
 }
 
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn quad_string_eq(s1: *const FatPtr, s2: *const FatPtr) -> bool {
+pub unsafe extern "C" fn qtrt_string_eq(s1: *const FatPtr, s2: *const FatPtr) -> bool {
     unsafe {
         let l1 = if s1.is_null() || (*s1).ptr.is_null() {
             0
@@ -317,7 +366,7 @@ pub unsafe extern "C" fn quad_string_eq(s1: *const FatPtr, s2: *const FatPtr) ->
 }
 
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn quad_read_file(path: *const FatPtr) -> FatPtr {
+pub unsafe extern "C" fn qtrt_read_file(path: *const FatPtr) -> FatPtr {
     unsafe {
         if path.is_null() || (*path).ptr.is_null() {
             eprintln!("Error: File path is null");

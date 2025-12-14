@@ -6,10 +6,7 @@ type StrMap:
 
 impl StrMap:
     func make() -> StrMap:
-        back StrMap {
-            keys: heap(TextVec.make(8)),
-            vals: heap(IntVec.make(8))
-        }
+        back StrMap(keys: heap(TextVec.make(8)), vals: heap(IntVec.make(8)))
 
     func insert(self, k: text, v: int) -> void:
         cell i: int := 0

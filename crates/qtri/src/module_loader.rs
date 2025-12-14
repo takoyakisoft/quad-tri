@@ -154,11 +154,11 @@ fn load_one(
         // If not found, try std (if import path looks like std/...)
         if !target.exists() {
             if import.path.starts_with("std") {
-                 let std_target_base = PathBuf::from(&import.path);
-                 let std_target = resolve_extension_check_exists(file_lang, &std_target_base);
-                 if std_target.exists() {
-                     target = std_target;
-                 }
+                let std_target_base = PathBuf::from(&import.path);
+                let std_target = resolve_extension_check_exists(file_lang, &std_target_base);
+                if std_target.exists() {
+                    target = std_target;
+                }
             }
         }
 

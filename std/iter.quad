@@ -1,0 +1,20 @@
+# Iterator helpers for foreach.
+
+# Range is a simple iterator over integers [start, end).
+
+type Range:
+    current: int
+    end: int
+
+impl Range:
+    func next(self) -> Option<int>:
+        cell out: Option<int> := Option<int>::None
+        when self.current < self.end:
+            bind v: int := self.current
+            self.current := self.current + 1
+            out := Option<int>::Some(v)
+        back out
+
+# Helper function
+func range(start: int, end: int) -> Range:
+    back Range(current: start, end: end)

@@ -13,6 +13,8 @@ To move the Quad/Tri compiler toward Stage1 (compiled by Quad/Tri themselves), w
 5. **File I/O**
    - Loading source files requires more than `println`; we need reads in addition to writes.
 6. **Memory management**
-   - Structs and dynamic arrays require heap allocation (`malloc`/`free`).
+   - Structs and dynamic arrays require heap allocation.
+   - Quad uses `heap`/`free` (and `deref`) while Tri uses `mem`/`del`.
+   - The current prototype runtime/std also exposes low-level intrinsics like `alloc_bytes` and `sys_dealloc`.
 
 **Next-step suggestion:** Implement struct definitions (`type` / `typ`) first. They are the foundation for building `Result`/`Option`-like types and organizing compiler data during self-hosting.

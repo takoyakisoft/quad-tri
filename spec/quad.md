@@ -1,7 +1,7 @@
 # Quad Syntax (Strict MVP)
 
 ## Keywords (4 letters)
-from, type, enum, case, func, bind, cell, publ, priv, when, elif, else, loop, back, stop, next, over
+from, type, enum, case, func, bind, cell, publ, priv, when, elif, else, loop, back, stop, next, over, impl, self, heap, free, trap
 
 | Concept | Quad (4 letters) | Tri (3 letters) | Meaning |
 | --- | --- | --- | --- |
@@ -11,8 +11,7 @@ from, type, enum, case, func, bind, cell, publ, priv, when, elif, else, loop, ba
 | Mutable binding | cell | var | Mutable local variable |
 | Continue | next | nxt | Loop continue |
 
-Stage1 reserved keywords (including unimplemented): impl, make, self, list, push, size,
-open, read, save, shut, heap, free, trap
+Stage1 reserved keywords: (none)
 
 ## Types
 int (i64), bool (i1), text (ptr to C string), void
@@ -23,9 +22,9 @@ int (i64), bool (i1), text (ptr to C string), void
 - Fixed-length arrays use `[len]type` syntax and can nest (e.g. `[2][3]int`).
 
 ## Structs
-- Define with `type Name { field: type, ... }` using braces (no indent blocks).
+- Define with `type Name:` followed by indented `field: type` lines.
 - Each field may be prefixed with `publ` (public) or `priv` (private); omit for private.
-- Create with `Name{ field: expr, ... }` providing every field exactly once.
+- Create with `Name(field: expr, ...)` providing every field exactly once.
 - Access fields with `expr.field`.
 - Assignments may target fields: `foo.bar := expr`.
 - Structs may be returned from functions.
@@ -66,3 +65,16 @@ logic:   &&  ||
 - `from "path/to/file"` at the top level loads another Quad source file before the current one is type-checked.
 - If the path has no extension, `.quad` is appended automatically.
 - Paths are resolved relative to the importing file.
+
+## Pointers and heap allocation
+
+Quad exposes a simple typed pointer form via `Addr<T>`.
+
+- `heap(expr) -> Addr<T>` allocates a copy of `expr` on the heap.
+- `deref(ptr) -> T` loads the value pointed to by `ptr`.
+- `free(ptr)` deallocates the heap allocation.
+
+Notes:
+
+- `heap`, `deref`, and `free` are built-ins (and keywords), not user-defined functions.
+- `free` is also used to drop managed runtime values like `text` and dynamic arrays.

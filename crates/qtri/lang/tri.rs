@@ -21,21 +21,9 @@ pub fn keyword_of(s: &str) -> Option<Kw> {
 
         // Stage1 completion (data structures / memory)
         "imp" => Kw::Impl,
-        "new" => Kw::Make,
         "slf" => Kw::Self_,
-        "vec" => Kw::List,
-        "psh" => Kw::Push,
         "enm" => Kw::Enum,
         "cas" => Kw::Case,
-
-        // Stage1 completion (I/O / errors)
-        "opn" => Kw::Open,
-        "red" => Kw::Read,
-        "wrt" => Kw::Write,
-        "cls" => Kw::Close,
-        "mem" => Kw::Box,
-        "del" => Kw::Drop,
-        "die" => Kw::Panic,
 
         _ => return None,
     })

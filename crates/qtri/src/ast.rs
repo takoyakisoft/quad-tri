@@ -13,6 +13,7 @@ pub struct LinkedProgram {
     pub enums: Vec<EnumDef>,
     pub structs: Vec<StructDef>,
     pub funcs: Vec<Func>,
+    #[allow(dead_code)]
     pub source_map: Vec<std::path::PathBuf>,
 }
 
@@ -102,6 +103,13 @@ pub enum Stmt {
         #[allow(dead_code)]
         span: Span,
     }, // loop <cond>:
+    Foreach {
+        name: String, // loop variable name
+        ty: String,   // loop variable type
+        iter: Expr,   // iterator object expression
+        body: Vec<Stmt>,
+        span: Span,
+    },
     Case {
         scrutinee: Expr,
         arms: Vec<(Pattern, Vec<Stmt>)>,
@@ -187,11 +195,6 @@ pub enum Expr {
         elements: Vec<Expr>,
         span: Span,
     },
-    StructLit {
-        name: String,
-        fields: Vec<(String, Expr, Span)>,
-        span: Span,
-    },
     EnumLit {
         enum_name: String,
         variant: String,
@@ -238,7 +241,6 @@ impl Expr {
             Expr::Str(_, s) => *s,
             Expr::Ident(_, s) => *s,
             Expr::ArrayLit { span, .. } => *span,
-            Expr::StructLit { span, .. } => *span,
             Expr::EnumLit { span, .. } => *span,
             Expr::Index { span, .. } => *span,
             Expr::Field { span, .. } => *span,

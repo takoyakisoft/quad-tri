@@ -15,5 +15,10 @@ These instructions apply to the entire repository.
 - Keep `cargo check` warning-free (treat new warnings as regressions).
 - Run `cargo fmt` on Rust changes.
 - When adding examples or docs, keep keyword spellings consistent: Quad uses 4-letter keywords; Tri uses 3-letter keywords.
+- The standard library allocation helper module is `std/mem.quad` (renamed from `std/alloc.quad`).
 - **Modules**: Import paths without extensions (e.g., `from "math"`) automatically map to `.quad` or `.tri` files. Imports must appear at the top of the file.
 - **Structs & Methods**: Use `impl` (Quad) or `imp` (Tri) blocks to define methods. The first parameter `self` (Quad) or `slf` (Tri) is required for methods (receivers) but omitted for associated functions.
+
+## Documentation conventions
+
+- In README code fences, use `gdscript` for Quad examples and `python` for Tri examples (syntax highlighting only).

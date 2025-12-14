@@ -21,21 +21,9 @@ pub fn keyword_of(s: &str) -> Option<Kw> {
 
         // Stage1 completion (data structures / memory)
         "impl" => Kw::Impl,
-        "make" => Kw::Make,  // struct creation
         "self" => Kw::Self_, // method receiver
-        "list" => Kw::List,  // dynamic array
-        "push" => Kw::Push,
-        "enum" => Kw::Enum, // enum type
-        "case" => Kw::Case, // pattern match
-
-        // Stage1 completion (I/O / errors)
-        "open" => Kw::Open,
-        "read" => Kw::Read,
-        "save" => Kw::Write, // write is 5 letters so use save
-        "shut" => Kw::Close, // close is 5 letters so use shut
-        "heap" => Kw::Box,   // memory allocation
-        "free" => Kw::Drop,
-        "trap" => Kw::Panic, // Panic
+        "enum" => Kw::Enum,  // enum type
+        "case" => Kw::Case,  // pattern match
 
         _ => return None,
     })

@@ -1,9 +1,9 @@
 enum Node:
     Ende
-    Link(int, ref<Node>)
+    Link(int, Addr<Node>)
 
 func main() -> int:
-    cell tail: ref<Node> := heap(Node::Ende)
+    cell tail: Addr<Node> := heap(Node::Ende)
     cell head: Node := Node::Link(10, tail)
 
     case head:
