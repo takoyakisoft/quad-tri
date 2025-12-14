@@ -50,9 +50,13 @@ pub fn load_program(lang: Language, entry: &Path) -> Result<LinkedProgram, LoadE
     let mut funcs = Vec::new();
     let mut visited = HashSet::<PathBuf>::new();
     let mut source_map = Vec::new();
+
+    // Resolve entry point extension if needed
+    let entry_resolved = resolve_extension_check_exists(lang, entry);
+
     load_one(
         lang,
-        entry,
+        &entry_resolved,
         None,
         &mut visited,
         &mut source_map,
@@ -68,19 +72,25 @@ pub fn load_program(lang: Language, entry: &Path) -> Result<LinkedProgram, LoadE
     })
 }
 
-fn append_default_extension(lang: Language, path: &Path) -> PathBuf {
+fn resolve_extension_check_exists(lang: Language, path: &Path) -> PathBuf {
     if path.extension().is_some() {
         return path.to_path_buf();
     }
 
-    let mut with_ext = path.to_path_buf();
-    let ext = match lang {
-        Language::Quad => "quad",
-        Language::Tri => "tri",
-    };
+    let quad = path.with_extension("quad");
+    let tri = path.with_extension("tri");
 
-    with_ext.set_extension(ext);
-    with_ext
+    if quad.exists() {
+        return quad;
+    }
+    if tri.exists() {
+        return tri;
+    }
+
+    match lang {
+        Language::Quad => quad,
+        Language::Tri => tri,
+    }
 }
 
 fn load_one(
@@ -103,6 +113,17 @@ fn load_one(
         return Ok(());
     }
 
+    // Determine language from file extension
+    let file_lang = if let Some(ext) = canonical.extension().and_then(|s| s.to_str()) {
+        match ext {
+            "quad" => Language::Quad,
+            "tri" => Language::Tri,
+            _ => lang,
+        }
+    } else {
+        lang
+    };
+
     let file_id = source_map.len();
     source_map.push(canonical.clone());
 
@@ -112,7 +133,7 @@ fn load_one(
         err: e,
     })?;
 
-    let tokens = lex::lex_str(lang, &src, file_id).map_err(|err| LoadError::Lex {
+    let tokens = lex::lex_str(file_lang, &src, file_id).map_err(|err| LoadError::Lex {
         path: canonical.clone(),
         err,
     })?;
@@ -127,10 +148,22 @@ fn load_one(
         .unwrap_or_else(|| PathBuf::from("."));
 
     for import in parsed.imports {
-        let target = base_dir.join(&import.path);
-        let target = append_default_extension(lang, &target);
+        let relative_target = base_dir.join(&import.path);
+        let mut target = resolve_extension_check_exists(file_lang, &relative_target);
+
+        // If not found, try std (if import path looks like std/...)
+        if !target.exists() {
+            if import.path.starts_with("std") {
+                 let std_target_base = PathBuf::from(&import.path);
+                 let std_target = resolve_extension_check_exists(file_lang, &std_target_base);
+                 if std_target.exists() {
+                     target = std_target;
+                 }
+            }
+        }
+
         load_one(
-            lang,
+            file_lang,
             &target,
             Some(import.span),
             visited,
@@ -217,5 +250,24 @@ mod tests {
         let names: Vec<_> = program.funcs.iter().map(|f| f.name.as_str()).collect();
 
         assert_eq!(names, ["b", "a"]);
+    }
+
+    #[test]
+    fn loads_mixed_languages() {
+        let dir = tempdir().unwrap();
+        let root = dir.path();
+
+        // Quad imports Tri
+        write_file(root, "helper.tri", "def help() -> int:\n    ret 42\n");
+        let entry = write_file(
+            root,
+            "main.quad",
+            "from \"helper\"\n\nfunc main() -> int:\n    back help()\n",
+        );
+
+        let program = load_program(Language::Quad, &entry).expect("program loads");
+        let names: Vec<_> = program.funcs.iter().map(|f| f.name.as_str()).collect();
+
+        assert_eq!(names, ["help", "main"]);
     }
 }

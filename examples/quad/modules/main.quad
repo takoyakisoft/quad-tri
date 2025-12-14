@@ -1,4 +1,4 @@
-from "math"
+from "std/math"
 from "greeter"
 
 func main() -> int:
