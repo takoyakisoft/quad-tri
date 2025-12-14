@@ -25,7 +25,7 @@ Two indentation-based language prototypes.
 
 Quad uses four-letter keywords and `from` imports. A minimal module-based program (see `examples/quad/modules`):
 
-```text
+```gdscript
 from "math"
 from "greeter"
 
@@ -45,7 +45,7 @@ func main() -> int:
 
 Tri mirrors the same program with three-letter keywords and `use` imports (see `examples/tri/modules`):
 
-```text
+```python
 use "math"
 use "greeter"
 
@@ -65,7 +65,7 @@ def main() -> int:
 
 Enums and pattern matching are available with `enum`/`enm` declarations and `case`/`cas` blocks:
 
-```text
+```gdscript
 enum Event:
     Quit
     Click(int, int)
@@ -85,7 +85,7 @@ func handle(e: Event) -> void:
             println(k)
 ```
 
-```text
+```python
 enm Evt:
     Qit
     Clk(int, int)
