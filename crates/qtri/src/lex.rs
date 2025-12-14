@@ -96,6 +96,7 @@ pub enum TokKind {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Span {
+    pub file_id: usize,
     pub line: usize, // 1-based
     pub col: usize,  // 1-based (byte index in line + 1)
 }
@@ -119,20 +120,24 @@ impl std::fmt::Display for LexError {
 }
 impl std::error::Error for LexError {}
 
-fn err(line: usize, col: usize, msg: impl Into<String>) -> LexError {
+fn err(file_id: usize, line: usize, col: usize, msg: impl Into<String>) -> LexError {
     LexError {
-        span: Span { line, col },
+        span: Span {
+            file_id,
+            line,
+            col,
+        },
         msg: msg.into(),
     }
 }
 
 pub fn lex_file(lang: Language, path: &Path) -> Result<Vec<Token>, LexError> {
     let src = std::fs::read_to_string(path)
-        .map_err(|e| err(1, 1, format!("failed to read file: {e}")))?;
-    lex_str(lang, &src)
+        .map_err(|e| err(0, 1, 1, format!("failed to read file: {e}")))?;
+    lex_str(lang, &src, 0)
 }
 
-pub fn lex_str(lang: Language, src: &str) -> Result<Vec<Token>, LexError> {
+pub fn lex_str(lang: Language, src: &str, file_id: usize) -> Result<Vec<Token>, LexError> {
     let kw_fn: fn(&str) -> Option<Kw> = match lang {
         Language::Quad => crate::quad::keyword_of,
         Language::Tri => crate::tri::keyword_of,
@@ -156,7 +161,7 @@ pub fn lex_str(lang: Language, src: &str) -> Result<Vec<Token>, LexError> {
         while idx < bytes.len() {
             match bytes[idx] {
                 b' ' => idx += 1,
-                b'\t' => return Err(err(line_no, idx + 1, "tabs are forbidden")),
+                b'\t' => return Err(err(file_id, line_no, idx + 1, "tabs are forbidden")),
                 _ => break,
             }
         }
@@ -169,6 +174,7 @@ pub fn lex_str(lang: Language, src: &str) -> Result<Vec<Token>, LexError> {
             out.push(Token {
                 kind: TokKind::Newline,
                 span: Span {
+                    file_id,
                     line: line_no,
                     col: 1,
                 },
@@ -183,6 +189,7 @@ pub fn lex_str(lang: Language, src: &str) -> Result<Vec<Token>, LexError> {
             out.push(Token {
                 kind: TokKind::Indent,
                 span: Span {
+                    file_id,
                     line: line_no,
                     col: 1,
                 },
@@ -193,13 +200,14 @@ pub fn lex_str(lang: Language, src: &str) -> Result<Vec<Token>, LexError> {
                 out.push(Token {
                     kind: TokKind::Dedent,
                     span: Span {
+                        file_id,
                         line: line_no,
                         col: 1,
                     },
                 });
             }
             if *indents.last().unwrap() != indent {
-                return Err(err(line_no, 1, "indentation level mismatch"));
+                return Err(err(file_id, line_no, 1, "indentation level mismatch"));
             }
         }
 
@@ -231,7 +239,7 @@ pub fn lex_str(lang: Language, src: &str) -> Result<Vec<Token>, LexError> {
                     if c == b'\\' {
                         i += 1;
                         if i >= bytes.len() {
-                            return Err(err(line_no, col, "unterminated string escape"));
+                            return Err(err(file_id, line_no, col, "unterminated string escape"));
                         }
                         let esc = bytes[i];
                         match esc {
@@ -240,7 +248,7 @@ pub fn lex_str(lang: Language, src: &str) -> Result<Vec<Token>, LexError> {
                             b'r' => s.push('\r'),
                             b'\\' => s.push('\\'),
                             b'"' => s.push('"'),
-                            _ => return Err(err(line_no, i + 1, "unknown escape")),
+                            _ => return Err(err(file_id, line_no, i + 1, "unknown escape")),
                         }
                         i += 1;
                         continue;
@@ -250,7 +258,11 @@ pub fn lex_str(lang: Language, src: &str) -> Result<Vec<Token>, LexError> {
                 }
                 out.push(Token {
                     kind: TokKind::Str(s),
-                    span: Span { line: line_no, col },
+                    span: Span {
+                        file_id,
+                        line: line_no,
+                        col,
+                    },
                 });
                 continue;
             }
@@ -262,10 +274,16 @@ pub fn lex_str(lang: Language, src: &str) -> Result<Vec<Token>, LexError> {
                     i += 1;
                 }
                 let text = &line[start..i];
-                let v: i64 = text.parse().map_err(|_| err(line_no, col, "invalid int"))?;
+                let v: i64 = text
+                    .parse()
+                    .map_err(|_| err(file_id, line_no, col, "invalid int"))?;
                 out.push(Token {
                     kind: TokKind::Int(v),
-                    span: Span { line: line_no, col },
+                    span: Span {
+                        file_id,
+                        line: line_no,
+                        col,
+                    },
                 });
                 continue;
             }
@@ -286,12 +304,20 @@ pub fn lex_str(lang: Language, src: &str) -> Result<Vec<Token>, LexError> {
                 if let Some(k) = kw_fn(text) {
                     out.push(Token {
                         kind: TokKind::Kw(k),
-                        span: Span { line: line_no, col },
+                        span: Span {
+                            file_id,
+                            line: line_no,
+                            col,
+                        },
                     });
                 } else {
                     out.push(Token {
                         kind: TokKind::Ident(text.to_string()),
-                        span: Span { line: line_no, col },
+                        span: Span {
+                            file_id,
+                            line: line_no,
+                            col,
+                        },
                     });
                 }
                 continue;
@@ -321,7 +347,11 @@ pub fn lex_str(lang: Language, src: &str) -> Result<Vec<Token>, LexError> {
                 if let Some(k) = kind {
                     out.push(Token {
                         kind: k,
-                        span: Span { line: line_no, col },
+                        span: Span {
+                            file_id,
+                            line: line_no,
+                            col,
+                        },
                     });
                     i += 2;
                     continue;
@@ -356,11 +386,15 @@ pub fn lex_str(lang: Language, src: &str) -> Result<Vec<Token>, LexError> {
                 '&' => TokKind::Amp,
                 '^' => TokKind::Caret,
                 '|' => TokKind::Pipe,
-                _ => return Err(err(line_no, col, format!("unexpected char: {ch:?}"))),
+                _ => return Err(err(file_id, line_no, col, format!("unexpected char: {ch:?}"))),
             };
             out.push(Token {
                 kind,
-                span: Span { line: line_no, col },
+                span: Span {
+                    file_id,
+                    line: line_no,
+                    col,
+                },
             });
             i += 1;
         }
@@ -368,6 +402,7 @@ pub fn lex_str(lang: Language, src: &str) -> Result<Vec<Token>, LexError> {
         out.push(Token {
             kind: TokKind::Newline,
             span: Span {
+                file_id,
                 line: line_no,
                 col: bytes.len().max(1),
             },
@@ -380,6 +415,7 @@ pub fn lex_str(lang: Language, src: &str) -> Result<Vec<Token>, LexError> {
         out.push(Token {
             kind: TokKind::Dedent,
             span: Span {
+                file_id,
                 line: total_lines,
                 col: 1,
             },
@@ -388,6 +424,7 @@ pub fn lex_str(lang: Language, src: &str) -> Result<Vec<Token>, LexError> {
     out.push(Token {
         kind: TokKind::Eof,
         span: Span {
+            file_id,
             line: total_lines,
             col: 1,
         },
@@ -401,7 +438,7 @@ mod tests {
     use super::*;
 
     fn kinds(lang: Language, src: &str) -> Vec<TokKind> {
-        lex_str(lang, src)
+        lex_str(lang, src, 0)
             .unwrap()
             .into_iter()
             .map(|t| t.kind)

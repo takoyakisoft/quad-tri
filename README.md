@@ -15,11 +15,23 @@ Two indentation-based language prototypes.
 
 | Concept | Quad (4 letters) | Tri (3 letters) | Meaning |
 | --- | --- | --- | --- |
-| Public visibility | publ | pub | Public |
-| Private visibility | priv | prv | Private |
+| Import | from | use | Import module |
+| Function | func | def | Function definition |
+| Structure | type | typ | Struct definition |
+| Implementation | impl | imp | Method implementation |
+| Enumeration | enum | enm | Enum definition |
+| Case | case | cas | Pattern matching block |
+| Public visibility | publ | pub | Public modifier |
+| Private visibility | priv | prv | Private modifier |
 | Immutable binding | bind | let | Immutable local variable |
 | Mutable binding | cell | var | Mutable local variable |
-| Continue | next | nxt | Loop continue |
+| If | when | iff | Conditional |
+| Else If | elif | elf | Conditional else-if |
+| Else | else | els | Conditional else |
+| Loop | loop | for | Loop structure |
+| Return | back | ret | Return from function |
+| Break | stop | brk | Break loop |
+| Continue | next | nxt | Continue loop |
 
 ## Examples
 
@@ -86,22 +98,22 @@ func handle(e: Event) -> void:
 ```
 
 ```python
-enm Evt:
-    Qit
-    Clk(int, int)
+enm Event:
+    Quit
+    Click(int, int)
     Key(text)
 
-def hnd(e: Evt) -> void:
+def handle(e: Event) -> void:
     cas e:
-        iff Evt::Qit:
+        iff Event::Quit:
             println("Bye")
 
-        iff Evt::Clk(x, y):
-            println("Clk")
+        iff Event::Click(x, y):
+            println("Clicked at:")
             println(x)
 
-        iff Evt::Key(k):
-            println("Key")
+        iff Event::Key(k):
+            println("Key pressed:")
             println(k)
 ```
 

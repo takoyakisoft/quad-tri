@@ -1252,7 +1252,7 @@ mod tests {
     fn parses_quad_heap_and_stack_struct_example() {
         let src = "type User:\n    publ name: text\n    publ age: int\n\nfunc main() -> int:\n    # ---------------------------------------------------\n    # 1. Stack allocation\n    #    Rust: let u = User { name: \"Bob\", age: 20 };\n    #    Go:   u := User{Name: \"Bob\", Age: 20}\n    # ---------------------------------------------------\n    cell u: User := User {\n        name: \"Bob\",\n        age: 20\n    }\n    \n    # Field access uses the dot operator\n    println(u.name)\n\n\n    # ---------------------------------------------------\n    # 2. Heap allocation\n    #    Rust: let p = Box::new(User { ... });\n    #    Go:   p := &User{ ... }\n    # ---------------------------------------------------\n    # Passing the struct value to heap() moves it to the heap and returns ref<User>.\n    \n    cell p: ref<User> := heap(User {\n        name: \"Alice\",\n        age: 30\n    })\n\n    # Pointer access supports automatic dereference\n    println(p.name)\n\n    # Heap values must be freed\n    free(p)\n\n    back 0\n";
 
-        let tokens = lex::lex_str(Language::Quad, src).expect("lexing succeeds");
+        let tokens = lex::lex_str(Language::Quad, src, 0).expect("lexing succeeds");
         let _ = parse_program(&tokens).expect("program parses");
     }
 
@@ -1260,7 +1260,7 @@ mod tests {
     fn parses_tri_heap_and_stack_struct_example() {
         let src = "typ Usr:\n    pub nam: text\n    pub age: int\n\ndef main() -> int:\n    # ---------------------------------------------------\n    # 1. Stack allocation\n    #    Construct directly without new/make\n    # ---------------------------------------------------\n    var u: Usr := Usr {\n        nam: \"Bob\",\n        age: 20\n    }\n    \n    println(u.nam)\n\n\n    # ---------------------------------------------------\n    # 2. Heap allocation\n    #    Wrap with mem()\n    # ---------------------------------------------------\n    var p: ptr<Usr> := mem(Usr {\n        nam: \"Alice\",\n        age: 30\n    })\n\n    println(p.nam)\n\n    # Free the heap allocation\n    del(p)\n\n    ret 0\n";
 
-        let tokens = lex::lex_str(Language::Tri, src).expect("lexing succeeds");
+        let tokens = lex::lex_str(Language::Tri, src, 0).expect("lexing succeeds");
         let _ = parse_program(&tokens).expect("program parses");
     }
 
@@ -1268,7 +1268,7 @@ mod tests {
     fn parses_quad_dict_example() {
         let src = "func main() -> int:\n    # Create a dictionary: dict(key type, value type)\n    cell scores: dict<text, int> := dict(text, int)\n\n    # Insert or update via index access\n    # Go-style [] access is convenient compared to Rust insert\n    scores[\"Alice\"] := 100\n    scores[\"Bob\"]   := 80\n\n    # Read value\n    println(scores[\"Alice\"])\n    \n    back 0\n";
 
-        let tokens = lex::lex_str(Language::Quad, src).expect("lexing succeeds");
+        let tokens = lex::lex_str(Language::Quad, src, 0).expect("lexing succeeds");
         let _ = parse_program(&tokens).expect("program parses");
     }
 
@@ -1276,7 +1276,7 @@ mod tests {
     fn parses_tri_map_example() {
         let src = "def main() -> int:\n    # Create a map: map(key type, value type)\n    var scs: map<text, int> := map(text, int)\n\n    # Insert\n    scs[\"Alice\"] := 100\n\n    # Read\n    println(scs[\"Alice\"])\n    \n    ret 0\n";
 
-        let tokens = lex::lex_str(Language::Tri, src).expect("lexing succeeds");
+        let tokens = lex::lex_str(Language::Tri, src, 0).expect("lexing succeeds");
         let _ = parse_program(&tokens).expect("program parses");
     }
 
@@ -1284,7 +1284,7 @@ mod tests {
     fn parses_quad_text_operations_example() {
         let src = "func main() -> int:\n    cell s: text := \"Hello\"\n\n    # 1. Concatenation (+) allocates a fresh string\n    cell msg: text := s + \" World\"\n    \n    # 2. Method calls (modern) support msg.size()\n    when msg.size() > 10:\n        println(\"Too long\")\n\n    # 3. Substring returns a slice into the original buffer\n    cell sub: text := msg.sub(0, 5)  # \"Hello\"\n    \n    # 4. Search\n    when msg.has(\"World\"):\n        println(\"Found!\")\n\n    # 5. Format with placeholders\n    cell log: text := fmt(\"User: {}, ID: {}\", \"Bob\", 123)\n    println(log)\n\n    free(msg)\n    free(log)\n    \n    back 0\n";
 
-        let tokens = lex::lex_str(Language::Quad, src).expect("lexing succeeds");
+        let tokens = lex::lex_str(Language::Quad, src, 0).expect("lexing succeeds");
         let _ = parse_program(&tokens).expect("program parses");
     }
 
@@ -1292,7 +1292,7 @@ mod tests {
     fn parses_tri_text_operations_example() {
         let src = "def main() -> int:\n    var s: text := \"Hello\"\n\n    # Concatenation\n    var msg: text := s + \" World\"\n\n    # Method call len()\n    iff msg.len() > 10:\n        println(\"Big\")\n\n    # Substring\n    var sub: text := msg.sub(0, 5)\n    \n    # Search\n    iff msg.has(\"World\"):\n        println(\"Yes\")\n\n    # Format\n    var log: text := fmt(\"User: {}, ID: {}\", \"Bob\", 123)\n    println(log)\n\n    del(msg)\n    del(log)\n    ret 0\n";
 
-        let tokens = lex::lex_str(Language::Tri, src).expect("lexing succeeds");
+        let tokens = lex::lex_str(Language::Tri, src, 0).expect("lexing succeeds");
         let _ = parse_program(&tokens).expect("program parses");
     }
 
@@ -1300,7 +1300,7 @@ mod tests {
     fn parses_quad_enum_case_example() {
         let src = "enum Event:\n    Quit\n    Click(int, int)\n    Key(text)\n\nfunc handle(e: Event) -> void:\n    case e:\n        when Event::Quit:\n            println(\"Bye\")\n\n        when Event::Click(x, y):\n            println(\"Clicked at:\")\n            println(x)\n\n        when Event::Key(k):\n            println(\"Key pressed:\")\n            println(k)\n";
 
-        let tokens = lex::lex_str(Language::Quad, src).expect("lexing succeeds");
+        let tokens = lex::lex_str(Language::Quad, src, 0).expect("lexing succeeds");
         let _ = parse_program(&tokens).expect("program parses");
     }
 
@@ -1308,7 +1308,7 @@ mod tests {
     fn parses_tri_enum_case_example() {
         let src = "enm Evt:\n    Qit\n    Clk(int, int)\n    Key(text)\n\n\ndef hnd(e: Evt) -> void:\n    cas e:\n        iff Evt::Qit:\n            println(\"Bye\")\n\n        iff Evt::Clk(x, y):\n            println(\"Clk\")\n            println(x)\n\n        iff Evt::Key(k):\n            println(\"Key\")\n            println(k)\n";
 
-        let tokens = lex::lex_str(Language::Tri, src).expect("lexing succeeds");
+        let tokens = lex::lex_str(Language::Tri, src, 0).expect("lexing succeeds");
         let _ = parse_program(&tokens).expect("program parses");
     }
 
@@ -1316,15 +1316,15 @@ mod tests {
     fn parses_quad_fixed_array_examples() {
         let src = "func main() -> int:\n    # 1. Simple fixed array on the stack\n    cell arr: [5]int := [10, 20, 30, 40, 50]\n    \n    println(\"Element 0:\")\n    println(arr[0])\n\n    # 2. Nested arrays (2 x 3 matrix)\n    cell matrix: [2][3]int := [\n        [1, 2, 3],\n        [4, 5, 6]\n    ]\n\n    println(\"Matrix[1][2]:\")\n    println(matrix[1][2])\n\n    # 3. Replace a full row\n    matrix[0] := [9, 8, 7]\n    \n    println(\"Matrix[0][0] changed:\")\n    println(matrix[0][0])\n\n    # 4. Explicit zeroed buffer\n    cell buffer: [4]int := [0, 0, 0, 0]\n\n    back 0\n";
 
-        let tokens = lex::lex_str(Language::Quad, src).expect("lexing succeeds");
+        let tokens = lex::lex_str(Language::Quad, src, 0).expect("lexing succeeds");
         let _ = parse_program(&tokens).expect("program parses");
     }
 
     #[test]
     fn parses_tri_fixed_array_examples() {
-        let src = "def main() -> int:\n    # 1. Fixed-length array\n    var arr: [3]int := [100, 200, 300]\n    \n    println(arr[0])\n\n    # 2. Two-dimensional array (2 x 2)\n    var mtx: [2][2]int := [\n        [1, 0],\n        [0, 1]\n    ]\n\n    println(\"Identity Matrix:\")\n    println(mtx[0][0])\n    println(mtx[1][1])\n\n    # 3. Fixed array of strings\n    var names: [3]text := [\"Alice\", \"Bob\", \"Eve\"]\n    \n    println(names[1])\n\n    ret 0\n";
+        let src = "def main() -> int:\n    # 1. Simple fixed array on the stack\n    var arr: [3]int := [100, 200, 300]\n    \n    println(arr[0])\n\n    # 2. Two-dimensional array (2 x 2)\n    var mtx: [2][2]int := [\n        [1, 0],\n        [0, 1]\n    ]\n\n    println(\"Identity Matrix:\")\n    println(mtx[0][0])\n    println(mtx[1][1])\n\n    # 3. Fixed array of strings\n    var names: [3]text := [\"Alice\", \"Bob\", \"Eve\"]\n    \n    println(names[1])\n\n    ret 0\n";
 
-        let tokens = lex::lex_str(Language::Tri, src).expect("lexing succeeds");
+        let tokens = lex::lex_str(Language::Tri, src, 0).expect("lexing succeeds");
         let _ = parse_program(&tokens).expect("program parses");
     }
 }

@@ -13,6 +13,7 @@ pub struct LinkedProgram {
     pub enums: Vec<EnumDef>,
     pub structs: Vec<StructDef>,
     pub funcs: Vec<Func>,
+    pub source_map: Vec<std::path::PathBuf>,
 }
 
 #[derive(Debug)]
