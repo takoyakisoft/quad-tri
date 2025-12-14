@@ -1007,6 +1007,16 @@ impl<'a> Parser<'a> {
                 self.next();
                 Ok(Expr::Ident("self".into(), sp))
             }
+            TokKind::Kw(Kw::True) => {
+                let sp = t.span;
+                self.next();
+                Ok(Expr::Bool(true, sp))
+            }
+            TokKind::Kw(Kw::False) => {
+                let sp = t.span;
+                self.next();
+                Ok(Expr::Bool(false, sp))
+            }
 
             TokKind::LBrack => {
                 let sp = t.span;

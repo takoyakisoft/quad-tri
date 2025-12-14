@@ -25,6 +25,9 @@ pub fn keyword_of(s: &str) -> Option<Kw> {
         "enm" => Kw::Enum,
         "cas" => Kw::Case,
 
+        "tru" => Kw::True,
+        "fal" => Kw::False,
+
         _ => return None,
     })
 }

@@ -958,6 +958,7 @@ fn check_expr(
     module_id: usize,
 ) -> Result<Ty, SemError> {
     match e {
+        Expr::Bool(_, _) => Ok(Ty::Bool),
         Expr::Int(_, _) => Ok(Ty::Int),
         Expr::Str(_, _) => Ok(Ty::Text),
         Expr::Ident(name, sp) => {
@@ -1471,14 +1472,14 @@ fn check_expr(
                 }
             } else if let Expr::Ident(fname, sp) = &**callee {
                 // Builtins with type-dependent behavior
-                if fname == "heap" || fname == "mem" {
+                if fname == "heap" || fname == "mem" || fname == "alloc" {
                     if args.len() != 1 {
-                        return Err(serr(*span, "heap takes exactly 1 arg"));
+                        return Err(serr(*span, "heap/alloc takes exactly 1 arg"));
                     }
                     let expr = match &args[0] {
                         Arg::Pos(e) => e,
                         Arg::Named { .. } => {
-                            return Err(serr(*span, "heap does not take named args"));
+                            return Err(serr(*span, "heap/alloc does not take named args"));
                         }
                     };
                     let inner = check_expr(
@@ -1488,9 +1489,9 @@ fn check_expr(
                         return Err(serr(expr.span(), "cannot heap-allocate void"));
                     }
                     Ok(Ty::Ref(Box::new(inner)))
-                } else if fname == "free" || fname == "del" {
+                } else if fname == "free" || fname == "del" || fname == "dealloc" {
                     if args.len() != 1 {
-                        return Err(serr(*span, "free takes exactly 1 arg"));
+                        return Err(serr(*span, "free/dealloc takes exactly 1 arg"));
                     }
                     let expr = match &args[0] {
                         Arg::Pos(e) => e,

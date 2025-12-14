@@ -184,6 +184,7 @@ pub enum BinOp {
 
 #[derive(Debug)]
 pub enum Expr {
+    Bool(bool, Span),
     Int(i64, Span),
     Str(String, Span),
     Ident(String, Span),
@@ -233,6 +234,7 @@ pub enum Expr {
 impl Expr {
     pub fn span(&self) -> Span {
         match self {
+            Expr::Bool(_, s) => *s,
             Expr::Int(_, s) => *s,
             Expr::Str(_, s) => *s,
             Expr::Ident(_, s) => *s,

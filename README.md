@@ -35,8 +35,8 @@ Two indentation-based language prototypes.
 
 ## Memory and pointers
 
-- Quad heap allocation uses `heap(expr) -> Addr<T>`, `deref(ptr) -> T`, and `free(ptr)`.
-- Tri heap allocation uses `mem(expr) -> Ptr<T>` and `del(ptr)`.
+Quad/Tri heap allocation uses `std/mem` functions `alloc(expr)` and `dealloc(ptr)`.
+Pointer types are `Addr<T>` (Quad) and `Ptr<T>` (Tri).
 
 ## Standard library (prototype)
 
