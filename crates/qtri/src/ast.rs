@@ -119,7 +119,7 @@ pub enum Stmt {
     Expr {
         expr: Expr,
         span: Span,
-    }, // e.g. echo(...), foo(...)
+    }, // e.g. println(...), foo(...)
 }
 
 #[derive(Debug)]
@@ -182,7 +182,6 @@ pub enum Expr {
     Int(i64, Span),
     Str(String, Span),
     Ident(String, Span),
-    BuiltinPrint(Span), // echo / prn
     ArrayLit {
         elements: Vec<Expr>,
         span: Span,
@@ -190,6 +189,12 @@ pub enum Expr {
     StructLit {
         name: String,
         fields: Vec<(String, Expr, Span)>,
+        span: Span,
+    },
+    EnumLit {
+        enum_name: String,
+        variant: String,
+        args: Vec<Expr>,
         span: Span,
     },
     Index {
@@ -218,6 +223,11 @@ pub enum Expr {
         rhs: Box<Expr>,
         span: Span,
     },
+
+    Try {
+        expr: Box<Expr>,
+        span: Span,
+    },
 }
 
 impl Expr {
@@ -226,14 +236,15 @@ impl Expr {
             Expr::Int(_, s) => *s,
             Expr::Str(_, s) => *s,
             Expr::Ident(_, s) => *s,
-            Expr::BuiltinPrint(s) => *s,
             Expr::ArrayLit { span, .. } => *span,
             Expr::StructLit { span, .. } => *span,
+            Expr::EnumLit { span, .. } => *span,
             Expr::Index { span, .. } => *span,
             Expr::Field { span, .. } => *span,
             Expr::Call { span, .. } => *span,
             Expr::Unary { span, .. } => *span,
             Expr::Binary { span, .. } => *span,
+            Expr::Try { span, .. } => *span,
         }
     }
 }

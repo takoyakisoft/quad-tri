@@ -1,7 +1,7 @@
 # Quad Syntax (Strict MVP)
 
 ## Keywords (4 letters)
-from, type, enum, case, func, bind, cell, publ, priv, when, elif, else, loop, back, echo, stop, next, over
+from, type, enum, case, func, bind, cell, publ, priv, when, elif, else, loop, back, stop, next, over
 
 | Concept | Quad (4 letters) | Tri (3 letters) | Meaning |
 | --- | --- | --- | --- |
@@ -10,16 +10,17 @@ from, type, enum, case, func, bind, cell, publ, priv, when, elif, else, loop, ba
 | Immutable binding | bind | let | Immutable local variable |
 | Mutable binding | cell | var | Mutable local variable |
 | Continue | next | nxt | Loop continue |
-| Character | char | chr | char / Unicode scalar value (u32) |
-| Byte | byte | byt | u8 / unsigned char |
 
 Stage1 reserved keywords (including unimplemented): impl, make, self, list, push, size,
-open, read, save, shut, heap, free, okay, fail, trap
+open, read, save, shut, heap, free, trap
 
 ## Types
-intg (i64), bool (i1), text (ptr to C string), void
+int (i64), bool (i1), text (ptr to C string), void
 
-- Fixed-length arrays use `[len]type` syntax and can nest (e.g. `[2][3]intg`).
+- Text operators: `text + text -> text`, `text == text -> bool`, `text != text -> bool`.
+- Ordering comparisons (`<`, `<=`, `>`, `>=`) are only defined for `int`.
+
+- Fixed-length arrays use `[len]type` syntax and can nest (e.g. `[2][3]int`).
 
 ## Structs
 - Define with `type Name { field: type, ... }` using braces (no indent blocks).

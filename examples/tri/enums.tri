@@ -1,0 +1,39 @@
+enm Color:
+    Red
+    Green(int)
+    Blue(int, int)
+
+
+def main() -> int:
+    var c: Color := Color::Red
+
+    # Match Red
+    cas c:
+        iff Color::Red:
+            println(10)
+        iff Color::Green(x):
+            println(x)
+        iff Color::Blue(x, y):
+            println(x + y)
+
+    # Match Green
+    c := Color::Green(20)
+    cas c:
+        iff Color::Red:
+            println(10)
+        iff Color::Green(x):
+            println(x)
+        iff Color::Blue(x, y):
+            println(x + y)
+
+    # Match Blue
+    c := Color::Blue(30, 40)
+    cas c:
+        iff Color::Red:
+            println(10)
+        iff Color::Green(x):
+            println(x)
+        iff Color::Blue(x, y):
+            println(x + y)
+
+    ret 0

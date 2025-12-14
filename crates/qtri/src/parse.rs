@@ -28,7 +28,7 @@ pub fn parse_program(tokens: &[Token]) -> Result<Program, ParseError> {
     let mut funcs = Vec::new();
     // Parse imports first
     while !p.at_eof() {
-        if let TokKind::Kw(Kw::From) = p.peek().kind {
+        if let TokKind::Kw(Kw::Use) = p.peek().kind {
             imports.push(p.parse_import()?);
             p.skip_newlines();
         } else {
@@ -43,7 +43,7 @@ pub fn parse_program(tokens: &[Token]) -> Result<Program, ParseError> {
                 enums.push(p.parse_enum()?);
                 p.skip_newlines();
             }
-            TokKind::Kw(Kw::Type) => {
+            TokKind::Kw(Kw::Struct) => {
                 structs.push(p.parse_struct()?);
                 p.skip_newlines();
             }
@@ -51,7 +51,7 @@ pub fn parse_program(tokens: &[Token]) -> Result<Program, ParseError> {
                 funcs.extend(p.parse_impl()?);
                 p.skip_newlines();
             }
-            TokKind::Kw(Kw::Func) => {
+            TokKind::Kw(Kw::Fn) => {
                 funcs.push(p.parse_func(None)?);
                 p.skip_newlines();
             }
@@ -162,6 +162,89 @@ impl<'a> Parser<'a> {
         }
     }
 
+    fn is_type_name_start(kind: &TokKind) -> bool {
+        matches!(kind, TokKind::Ident(_) | TokKind::LBrack)
+    }
+
+    fn can_parse_type_name_followed_by_coloncolon(&self) -> bool {
+        let mut j = self.i;
+
+        fn skip_type_name(tokens: &[Token], mut j: usize) -> Option<usize> {
+            let kind = &tokens.get(j)?.kind;
+            match kind {
+                TokKind::LBrack => {
+                    j += 1;
+                    match &tokens.get(j)?.kind {
+                        TokKind::Int(_) => j += 1,
+                        _ => return None,
+                    }
+                    match &tokens.get(j)?.kind {
+                        TokKind::RBrack => j += 1,
+                        _ => return None,
+                    }
+                    skip_type_name(tokens, j)
+                }
+                TokKind::Ident(_) | TokKind::Kw(_) => {
+                    j += 1;
+                    if matches!(tokens.get(j).map(|t| &t.kind), Some(TokKind::Lt)) {
+                        j += 1;
+                        let mut depth = 1usize;
+                        while j < tokens.len() {
+                            match tokens[j].kind {
+                                TokKind::Lt => depth += 1,
+                                TokKind::Gt => {
+                                    depth -= 1;
+                                    if depth == 0 {
+                                        j += 1;
+                                        break;
+                                    }
+                                }
+                                TokKind::Eof | TokKind::Newline => return None,
+                                _ => {}
+                            }
+                            j += 1;
+                        }
+                        if depth != 0 {
+                            return None;
+                        }
+                    }
+                    Some(j)
+                }
+                _ => None,
+            }
+        }
+
+        if !Self::is_type_name_start(&self.peek().kind) {
+            return false;
+        }
+
+        j = match skip_type_name(self.tokens, j) {
+            Some(n) => n,
+            None => return false,
+        };
+
+        matches!(
+            self.tokens.get(j).map(|t| &t.kind),
+            Some(TokKind::ColonColon)
+        )
+    }
+
+    fn take_variant_name(&mut self) -> Result<(String, Span), ParseError> {
+        let t = self.peek();
+        match &t.kind {
+            TokKind::Ident(s) => {
+                let sp = t.span;
+                let name = s.clone();
+                self.next();
+                Ok((name, sp))
+            }
+            _ => Err(perr(
+                t.span,
+                format!("expected variant name, got {:?}", t.kind),
+            )),
+        }
+    }
+
     fn parse_type_name(&mut self) -> Result<(String, Span), ParseError> {
         match self.peek().kind {
             TokKind::LBrack => {
@@ -170,10 +253,13 @@ impl<'a> Parser<'a> {
                 let len = match len_tok.kind {
                     TokKind::Int(v) if v >= 0 => {
                         self.next();
-                        v
+                        if (v as u64) > (usize::MAX as u64) {
+                            return Err(perr(len_tok.span, "array length too large for platform"));
+                        }
+                        v as usize
                     }
                     TokKind::Int(_) => {
-                        return Err(perr(len_tok.span, "array length cannot be negative"))
+                        return Err(perr(len_tok.span, "array length cannot be negative"));
                     }
                     _ => return Err(perr(len_tok.span, "expected array length")),
                 };
@@ -214,7 +300,7 @@ impl<'a> Parser<'a> {
     }
 
     fn parse_import(&mut self) -> Result<Import, ParseError> {
-        self.expect_kw(Kw::From)?;
+        self.expect_kw(Kw::Use)?;
         let (path, sp) = self.take_str()?;
         if self.peek().kind == TokKind::Newline {
             self.next();
@@ -253,7 +339,7 @@ impl<'a> Parser<'a> {
                                         return Err(perr(
                                             self.peek().span,
                                             "expected ',' or ')' in enum variant",
-                                        ))
+                                        ));
                                     }
                                 }
                             }
@@ -267,11 +353,13 @@ impl<'a> Parser<'a> {
                         span: v_span,
                     });
 
-                    if self.peek().kind == TokKind::Newline {
-                        self.next();
-                        continue;
-                    } else {
-                        break;
+                    match self.peek().kind {
+                        TokKind::Newline => {
+                            self.next();
+                            continue;
+                        }
+                        TokKind::Dedent => continue,
+                        _ => break,
                     }
                 }
                 TokKind::Dedent => {
@@ -280,13 +368,18 @@ impl<'a> Parser<'a> {
                 }
                 TokKind::Newline => {
                     self.next();
+                    // If dedent follows newline, handle it next iteration
+                    if self.peek().kind == TokKind::Dedent {
+                        self.next();
+                        break;
+                    }
                     continue;
                 }
                 other => {
                     return Err(perr(
                         self.peek().span,
                         format!("expected enum variant or dedent, got {:?}", other),
-                    ))
+                    ));
                 }
             }
         }
@@ -298,7 +391,7 @@ impl<'a> Parser<'a> {
     }
 
     fn parse_struct(&mut self) -> Result<StructDef, ParseError> {
-        let sp = self.expect_kw(Kw::Type)?;
+        let sp = self.expect_kw(Kw::Struct)?;
         let (name, _) = self.take_ident()?;
 
         let mut fields = Vec::new();
@@ -311,11 +404,11 @@ impl<'a> Parser<'a> {
                 if self.peek().kind != TokKind::RBrace {
                     loop {
                         let vis = match self.peek().kind {
-                            TokKind::Kw(Kw::Public) => {
+                            TokKind::Kw(Kw::Pub) => {
                                 self.next();
                                 Visibility::Public
                             }
-                            TokKind::Kw(Kw::Private) => {
+                            TokKind::Kw(Kw::Priv) => {
                                 self.next();
                                 Visibility::Private
                             }
@@ -342,6 +435,7 @@ impl<'a> Parser<'a> {
                     }
                 }
 
+                self.skip_newlines();
                 self.expect(TokKind::RBrace)?;
                 if self.peek().kind == TokKind::Newline {
                     self.next();
@@ -357,11 +451,11 @@ impl<'a> Parser<'a> {
 
                 while self.peek().kind != TokKind::Dedent {
                     let vis = match self.peek().kind {
-                        TokKind::Kw(Kw::Public) => {
+                        TokKind::Kw(Kw::Pub) => {
                             self.next();
                             Visibility::Public
                         }
-                        TokKind::Kw(Kw::Private) => {
+                        TokKind::Kw(Kw::Priv) => {
                             self.next();
                             Visibility::Private
                         }
@@ -392,7 +486,7 @@ impl<'a> Parser<'a> {
                 return Err(perr(
                     self.peek().span,
                     "expected '{' or ':' after type name",
-                ))
+                ));
             }
         }
 
@@ -421,7 +515,7 @@ impl<'a> Parser<'a> {
     }
 
     fn parse_func(&mut self, impl_target: Option<&str>) -> Result<Func, ParseError> {
-        let func_span = self.expect_kw(Kw::Func)?;
+        let func_span = self.expect_kw(Kw::Fn)?;
         let (name, _) = self.take_ident()?;
 
         self.expect(TokKind::LParen)?;
@@ -529,28 +623,28 @@ impl<'a> Parser<'a> {
     fn parse_stmt(&mut self) -> Result<Stmt, ParseError> {
         let t = self.peek();
         match &t.kind {
-            TokKind::Kw(Kw::Lock) | TokKind::Kw(Kw::Vars) => self.parse_vardecl(),
-            TokKind::Kw(Kw::When) => self.parse_if(),
+            TokKind::Kw(Kw::Let) | TokKind::Kw(Kw::Var) => self.parse_vardecl(),
+            TokKind::Kw(Kw::If) => self.parse_if(),
             TokKind::Kw(Kw::Loop) => self.parse_while(),
             TokKind::Kw(Kw::Case) => self.parse_case(),
-            TokKind::Kw(Kw::Stop) => {
+            TokKind::Kw(Kw::Break) => {
                 let sp = t.span;
                 self.next();
                 self.expect(TokKind::Newline)?;
                 Ok(Stmt::Break { span: sp })
             }
-            TokKind::Kw(Kw::Next) => {
+            TokKind::Kw(Kw::Continue) => {
                 let sp = t.span;
                 self.next();
                 self.expect(TokKind::Newline)?;
                 Ok(Stmt::Continue { span: sp })
             }
-            TokKind::Kw(Kw::Back) => self.parse_back(),
+            TokKind::Kw(Kw::Return) => self.parse_back(),
 
             // assignment starts with Ident followed by := somewhere on the line (optionally via .field or [index])
             TokKind::Ident(_) if self.line_contains_assign() => self.parse_assign(),
 
-            // otherwise: expression statement (echo(...), foo(...), etc.)
+            // otherwise: expression statement (println(...), foo(...), etc.)
             _ => {
                 let sp = t.span;
                 let expr = self.parse_expr(0)?;
@@ -575,8 +669,8 @@ impl<'a> Parser<'a> {
     fn parse_vardecl(&mut self) -> Result<Stmt, ParseError> {
         let t = self.peek();
         let (mutable, sp) = match &t.kind {
-            TokKind::Kw(Kw::Vars) => (true, t.span),
-            TokKind::Kw(Kw::Lock) => (false, t.span),
+            TokKind::Kw(Kw::Var) => (true, t.span),
+            TokKind::Kw(Kw::Let) => (false, t.span),
             _ => return Err(perr(t.span, "expected cell/bind")),
         };
         self.next();
@@ -636,7 +730,7 @@ impl<'a> Parser<'a> {
     }
 
     fn parse_if(&mut self) -> Result<Stmt, ParseError> {
-        let sp = self.expect_kw(Kw::When)?;
+        let sp = self.expect_kw(Kw::If)?;
         let cond = self.parse_expr(0)?;
         self.expect(TokKind::Colon)?;
         self.expect(TokKind::Newline)?;
@@ -682,7 +776,7 @@ impl<'a> Parser<'a> {
         let mut arms = Vec::new();
         loop {
             match self.peek().kind {
-                TokKind::Kw(Kw::When) => {
+                TokKind::Kw(Kw::If) => {
                     self.next();
                     let pat = self.parse_pattern()?;
                     self.expect(TokKind::Colon)?;
@@ -697,7 +791,7 @@ impl<'a> Parser<'a> {
                     return Err(perr(
                         self.peek().span,
                         "expected 'when' or dedent inside case block",
-                    ))
+                    ));
                 }
             }
         }
@@ -710,9 +804,15 @@ impl<'a> Parser<'a> {
     }
 
     fn parse_pattern(&mut self) -> Result<Pattern, ParseError> {
-        let (enum_name, _) = self.take_ident()?;
+        if !self.can_parse_type_name_followed_by_coloncolon() {
+            return Err(perr(
+                self.peek().span,
+                "expected enum pattern <Type>::<Variant>",
+            ));
+        }
+        let (enum_name, _) = self.parse_type_name()?;
         self.expect(TokKind::ColonColon)?;
-        let (variant, sp) = self.take_ident()?;
+        let (variant, sp) = self.take_variant_name()?;
         let mut bindings = Vec::new();
         if self.peek().kind == TokKind::LParen {
             self.next();
@@ -729,7 +829,7 @@ impl<'a> Parser<'a> {
                             return Err(perr(
                                 self.peek().span,
                                 "expected ',' or ')' in pattern bindings",
-                            ))
+                            ));
                         }
                     }
                 }
@@ -797,6 +897,14 @@ impl<'a> Parser<'a> {
                     span: idx_span,
                 };
                 continue;
+            } else if self.peek().kind == TokKind::Question {
+                let sp = self.peek().span;
+                self.next();
+                lhs = Expr::Try {
+                    expr: Box::new(lhs),
+                    span: sp,
+                };
+                continue;
             }
 
             let (op, l_bp, r_bp, non_assoc) = match infix_bp(&self.peek().kind) {
@@ -827,6 +935,37 @@ impl<'a> Parser<'a> {
 
     fn parse_prefix(&mut self) -> Result<Expr, ParseError> {
         let t = self.peek();
+
+        if self.can_parse_type_name_followed_by_coloncolon() {
+            let (enum_name, sp) = self.parse_type_name()?;
+            self.expect(TokKind::ColonColon)?;
+            let (variant, _) = self.take_variant_name()?;
+            let mut args = Vec::new();
+            if self.peek().kind == TokKind::LParen {
+                self.next();
+                if self.peek().kind != TokKind::RParen {
+                    loop {
+                        args.push(self.parse_expr(0)?);
+                        match self.peek().kind {
+                            TokKind::Comma => {
+                                self.next();
+                                self.skip_newlines();
+                            }
+                            TokKind::RParen => break,
+                            _ => return Err(perr(self.peek().span, "expected ',' or ')'")),
+                        }
+                    }
+                }
+                self.expect(TokKind::RParen)?;
+            }
+            return Ok(Expr::EnumLit {
+                enum_name,
+                variant,
+                args,
+                span: sp,
+            });
+        }
+
         match &t.kind {
             TokKind::Minus => {
                 let sp = t.span;
@@ -854,11 +993,11 @@ impl<'a> Parser<'a> {
                 self.next();
                 Ok(Expr::Int(v, sp))
             }
-            TokKind::Kw(Kw::Heap | Kw::Free) => {
+            TokKind::Kw(Kw::Box | Kw::Drop) => {
                 let sp = t.span;
                 let name = match t.kind {
-                    TokKind::Kw(Kw::Heap) => "heap",
-                    TokKind::Kw(Kw::Free) => "free",
+                    TokKind::Kw(Kw::Box) => "heap",
+                    TokKind::Kw(Kw::Drop) => "free",
                     _ => unreachable!(),
                 };
                 self.next();
@@ -904,7 +1043,7 @@ impl<'a> Parser<'a> {
                                 return Err(perr(
                                     self.peek().span,
                                     "expected ',' or ']' in array literal",
-                                ))
+                                ));
                             }
                         }
                     }
@@ -939,14 +1078,36 @@ impl<'a> Parser<'a> {
                         fields,
                         span: sp,
                     })
+                } else if self.peek().kind == TokKind::ColonColon {
+                    self.next(); // consume ::
+                    let (variant, _) = self.take_ident()?;
+                    let mut args = Vec::new();
+                    if self.peek().kind == TokKind::LParen {
+                        self.next();
+                        if self.peek().kind != TokKind::RParen {
+                            loop {
+                                args.push(self.parse_expr(0)?);
+                                match self.peek().kind {
+                                    TokKind::Comma => {
+                                        self.next();
+                                        self.skip_newlines(); // allow newline after comma
+                                    }
+                                    TokKind::RParen => break,
+                                    _ => return Err(perr(self.peek().span, "expected ',' or ')'")),
+                                }
+                            }
+                        }
+                        self.expect(TokKind::RParen)?;
+                    }
+                    Ok(Expr::EnumLit {
+                        enum_name: s,
+                        variant,
+                        args,
+                        span: sp,
+                    })
                 } else {
                     Ok(Expr::Ident(s, sp))
                 }
-            }
-            TokKind::Kw(Kw::Print) => {
-                let sp = t.span;
-                self.next();
-                Ok(Expr::BuiltinPrint(sp))
             }
             TokKind::LParen => {
                 self.next();
@@ -1089,7 +1250,7 @@ mod tests {
 
     #[test]
     fn parses_quad_heap_and_stack_struct_example() {
-        let src = "type User:\n    publ name: text\n    publ age: intg\n\nfunc main() -> intg:\n    # ---------------------------------------------------\n    # 1. Stack allocation\n    #    Rust: let u = User { name: \"Bob\", age: 20 };\n    #    Go:   u := User{Name: \"Bob\", Age: 20}\n    # ---------------------------------------------------\n    cell u: User := User {\n        name: \"Bob\",\n        age: 20\n    }\n    \n    # Field access uses the dot operator\n    echo(u.name)\n\n\n    # ---------------------------------------------------\n    # 2. Heap allocation\n    #    Rust: let p = Box::new(User { ... });\n    #    Go:   p := &User{ ... }\n    # ---------------------------------------------------\n    # Passing the struct value to heap() moves it to the heap and returns ref<User>.\n    \n    cell p: ref<User> := heap(User {\n        name: \"Alice\",\n        age: 30\n    })\n\n    # Pointer access supports automatic dereference\n    echo(p.name)\n\n    # Heap values must be freed\n    free(p)\n\n    back 0\n";
+        let src = "type User:\n    publ name: text\n    publ age: int\n\nfunc main() -> int:\n    # ---------------------------------------------------\n    # 1. Stack allocation\n    #    Rust: let u = User { name: \"Bob\", age: 20 };\n    #    Go:   u := User{Name: \"Bob\", Age: 20}\n    # ---------------------------------------------------\n    cell u: User := User {\n        name: \"Bob\",\n        age: 20\n    }\n    \n    # Field access uses the dot operator\n    println(u.name)\n\n\n    # ---------------------------------------------------\n    # 2. Heap allocation\n    #    Rust: let p = Box::new(User { ... });\n    #    Go:   p := &User{ ... }\n    # ---------------------------------------------------\n    # Passing the struct value to heap() moves it to the heap and returns ref<User>.\n    \n    cell p: ref<User> := heap(User {\n        name: \"Alice\",\n        age: 30\n    })\n\n    # Pointer access supports automatic dereference\n    println(p.name)\n\n    # Heap values must be freed\n    free(p)\n\n    back 0\n";
 
         let tokens = lex::lex_str(Language::Quad, src).expect("lexing succeeds");
         let _ = parse_program(&tokens).expect("program parses");
@@ -1097,7 +1258,7 @@ mod tests {
 
     #[test]
     fn parses_tri_heap_and_stack_struct_example() {
-        let src = "typ Usr:\n    pub nam: txt\n    pub age: int\n\ndef main() -> int:\n    # ---------------------------------------------------\n    # 1. Stack allocation\n    #    Construct directly without new/make\n    # ---------------------------------------------------\n    var u: Usr := Usr {\n        nam: \"Bob\",\n        age: 20\n    }\n    \n    prn(u.nam)\n\n\n    # ---------------------------------------------------\n    # 2. Heap allocation\n    #    Wrap with mem()\n    # ---------------------------------------------------\n    var p: ptr<Usr> := mem(Usr {\n        nam: \"Alice\",\n        age: 30\n    })\n\n    prn(p.nam)\n\n    # Free the heap allocation\n    del(p)\n\n    ret 0\n";
+        let src = "typ Usr:\n    pub nam: text\n    pub age: int\n\ndef main() -> int:\n    # ---------------------------------------------------\n    # 1. Stack allocation\n    #    Construct directly without new/make\n    # ---------------------------------------------------\n    var u: Usr := Usr {\n        nam: \"Bob\",\n        age: 20\n    }\n    \n    println(u.nam)\n\n\n    # ---------------------------------------------------\n    # 2. Heap allocation\n    #    Wrap with mem()\n    # ---------------------------------------------------\n    var p: ptr<Usr> := mem(Usr {\n        nam: \"Alice\",\n        age: 30\n    })\n\n    println(p.nam)\n\n    # Free the heap allocation\n    del(p)\n\n    ret 0\n";
 
         let tokens = lex::lex_str(Language::Tri, src).expect("lexing succeeds");
         let _ = parse_program(&tokens).expect("program parses");
@@ -1105,7 +1266,7 @@ mod tests {
 
     #[test]
     fn parses_quad_dict_example() {
-        let src = "func main() -> intg:\n    # Create a dictionary: dict(key type, value type)\n    cell scores: dict<text, intg> := dict(text, intg)\n\n    # Insert or update via index access\n    # Go-style [] access is convenient compared to Rust insert\n    scores[\"Alice\"] := 100\n    scores[\"Bob\"]   := 80\n\n    # Read value\n    echo(scores[\"Alice\"])\n    \n    back 0\n";
+        let src = "func main() -> int:\n    # Create a dictionary: dict(key type, value type)\n    cell scores: dict<text, int> := dict(text, int)\n\n    # Insert or update via index access\n    # Go-style [] access is convenient compared to Rust insert\n    scores[\"Alice\"] := 100\n    scores[\"Bob\"]   := 80\n\n    # Read value\n    println(scores[\"Alice\"])\n    \n    back 0\n";
 
         let tokens = lex::lex_str(Language::Quad, src).expect("lexing succeeds");
         let _ = parse_program(&tokens).expect("program parses");
@@ -1113,7 +1274,7 @@ mod tests {
 
     #[test]
     fn parses_tri_map_example() {
-        let src = "def main() -> int:\n    # Create a map: map(key type, value type)\n    var scs: map<txt, int> := map(txt, int)\n\n    # Insert\n    scs[\"Alice\"] := 100\n\n    # Read\n    prn(scs[\"Alice\"])\n    \n    ret 0\n";
+        let src = "def main() -> int:\n    # Create a map: map(key type, value type)\n    var scs: map<text, int> := map(text, int)\n\n    # Insert\n    scs[\"Alice\"] := 100\n\n    # Read\n    println(scs[\"Alice\"])\n    \n    ret 0\n";
 
         let tokens = lex::lex_str(Language::Tri, src).expect("lexing succeeds");
         let _ = parse_program(&tokens).expect("program parses");
@@ -1121,7 +1282,7 @@ mod tests {
 
     #[test]
     fn parses_quad_text_operations_example() {
-        let src = "func main() -> intg:\n    cell s: text := \"Hello\"\n\n    # 1. Concatenation (+) allocates a fresh string\n    cell msg: text := s + \" World\"\n    \n    # 2. Method calls (modern) support msg.size()\n    when msg.size() > 10:\n        echo(\"Too long\")\n\n    # 3. Substring returns a slice into the original buffer\n    cell sub: text := msg.sub(0, 5)  # \"Hello\"\n    \n    # 4. Search\n    when msg.has(\"World\"):\n        echo(\"Found!\")\n\n    # 5. Format with placeholders\n    cell log: text := fmt(\"User: {}, ID: {}\", \"Bob\", 123)\n    echo(log)\n\n    free(msg)\n    free(log)\n    \n    back 0\n";
+        let src = "func main() -> int:\n    cell s: text := \"Hello\"\n\n    # 1. Concatenation (+) allocates a fresh string\n    cell msg: text := s + \" World\"\n    \n    # 2. Method calls (modern) support msg.size()\n    when msg.size() > 10:\n        println(\"Too long\")\n\n    # 3. Substring returns a slice into the original buffer\n    cell sub: text := msg.sub(0, 5)  # \"Hello\"\n    \n    # 4. Search\n    when msg.has(\"World\"):\n        println(\"Found!\")\n\n    # 5. Format with placeholders\n    cell log: text := fmt(\"User: {}, ID: {}\", \"Bob\", 123)\n    println(log)\n\n    free(msg)\n    free(log)\n    \n    back 0\n";
 
         let tokens = lex::lex_str(Language::Quad, src).expect("lexing succeeds");
         let _ = parse_program(&tokens).expect("program parses");
@@ -1129,7 +1290,7 @@ mod tests {
 
     #[test]
     fn parses_tri_text_operations_example() {
-        let src = "def main() -> int:\n    var s: txt := \"Hello\"\n\n    # Concatenation\n    var msg: txt := s + \" World\"\n\n    # Method call len()\n    iff msg.len() > 10:\n        prn(\"Big\")\n\n    # Substring\n    var sub: txt := msg.sub(0, 5)\n    \n    # Search\n    iff msg.has(\"World\"):\n        prn(\"Yes\")\n\n    # Format\n    var log: txt := fmt(\"User: {}, ID: {}\", \"Bob\", 123)\n    prn(log)\n\n    del(msg)\n    del(log)\n    ret 0\n";
+        let src = "def main() -> int:\n    var s: text := \"Hello\"\n\n    # Concatenation\n    var msg: text := s + \" World\"\n\n    # Method call len()\n    iff msg.len() > 10:\n        println(\"Big\")\n\n    # Substring\n    var sub: text := msg.sub(0, 5)\n    \n    # Search\n    iff msg.has(\"World\"):\n        println(\"Yes\")\n\n    # Format\n    var log: text := fmt(\"User: {}, ID: {}\", \"Bob\", 123)\n    println(log)\n\n    del(msg)\n    del(log)\n    ret 0\n";
 
         let tokens = lex::lex_str(Language::Tri, src).expect("lexing succeeds");
         let _ = parse_program(&tokens).expect("program parses");
@@ -1137,7 +1298,7 @@ mod tests {
 
     #[test]
     fn parses_quad_enum_case_example() {
-        let src = "enum Event:\n    Quit\n    Click(intg, intg)\n    Key(text)\n\nfunc handle(e: Event) -> void:\n    case e:\n        when Event::Quit:\n            echo(\"Bye\")\n\n        when Event::Click(x, y):\n            echo(\"Clicked at:\")\n            echo(x)\n\n        when Event::Key(k):\n            echo(\"Key pressed:\")\n            echo(k)\n";
+        let src = "enum Event:\n    Quit\n    Click(int, int)\n    Key(text)\n\nfunc handle(e: Event) -> void:\n    case e:\n        when Event::Quit:\n            println(\"Bye\")\n\n        when Event::Click(x, y):\n            println(\"Clicked at:\")\n            println(x)\n\n        when Event::Key(k):\n            println(\"Key pressed:\")\n            println(k)\n";
 
         let tokens = lex::lex_str(Language::Quad, src).expect("lexing succeeds");
         let _ = parse_program(&tokens).expect("program parses");
@@ -1145,7 +1306,7 @@ mod tests {
 
     #[test]
     fn parses_tri_enum_case_example() {
-        let src = "enm Evt:\n    Qit\n    Clk(int, int)\n    Key(txt)\n\n\ndef hnd(e: Evt) -> vod:\n    cas e:\n        iff Evt::Qit:\n            prn(\"Bye\")\n\n        iff Evt::Clk(x, y):\n            prn(\"Clk\")\n            prn(x)\n\n        iff Evt::Key(k):\n            prn(\"Key\")\n            prn(k)\n";
+        let src = "enm Evt:\n    Qit\n    Clk(int, int)\n    Key(text)\n\n\ndef hnd(e: Evt) -> void:\n    cas e:\n        iff Evt::Qit:\n            println(\"Bye\")\n\n        iff Evt::Clk(x, y):\n            println(\"Clk\")\n            println(x)\n\n        iff Evt::Key(k):\n            println(\"Key\")\n            println(k)\n";
 
         let tokens = lex::lex_str(Language::Tri, src).expect("lexing succeeds");
         let _ = parse_program(&tokens).expect("program parses");
@@ -1153,7 +1314,7 @@ mod tests {
 
     #[test]
     fn parses_quad_fixed_array_examples() {
-        let src = "func main() -> intg:\n    # 1. Simple fixed array on the stack\n    cell arr: [5]intg := [10, 20, 30, 40, 50]\n    \n    echo(\"Element 0:\")\n    echo(arr[0])\n\n    # 2. Nested arrays (2 x 3 matrix)\n    cell matrix: [2][3]intg := [\n        [1, 2, 3],\n        [4, 5, 6]\n    ]\n\n    echo(\"Matrix[1][2]:\")\n    echo(matrix[1][2])\n\n    # 3. Replace a full row\n    matrix[0] := [9, 8, 7]\n    \n    echo(\"Matrix[0][0] changed:\")\n    echo(matrix[0][0])\n\n    # 4. Explicit zeroed buffer\n    cell buffer: [4]byte := [0, 0, 0, 0]\n\n    back 0\n";
+        let src = "func main() -> int:\n    # 1. Simple fixed array on the stack\n    cell arr: [5]int := [10, 20, 30, 40, 50]\n    \n    println(\"Element 0:\")\n    println(arr[0])\n\n    # 2. Nested arrays (2 x 3 matrix)\n    cell matrix: [2][3]int := [\n        [1, 2, 3],\n        [4, 5, 6]\n    ]\n\n    println(\"Matrix[1][2]:\")\n    println(matrix[1][2])\n\n    # 3. Replace a full row\n    matrix[0] := [9, 8, 7]\n    \n    println(\"Matrix[0][0] changed:\")\n    println(matrix[0][0])\n\n    # 4. Explicit zeroed buffer\n    cell buffer: [4]int := [0, 0, 0, 0]\n\n    back 0\n";
 
         let tokens = lex::lex_str(Language::Quad, src).expect("lexing succeeds");
         let _ = parse_program(&tokens).expect("program parses");
@@ -1161,7 +1322,7 @@ mod tests {
 
     #[test]
     fn parses_tri_fixed_array_examples() {
-        let src = "def main() -> int:\n    # 1. Fixed-length array\n    var arr: [3]int := [100, 200, 300]\n    \n    prn(arr[0])\n\n    # 2. Two-dimensional array (2 x 2)\n    var mtx: [2][2]int := [\n        [1, 0],\n        [0, 1]\n    ]\n\n    prn(\"Identity Matrix:\")\n    prn(mtx[0][0])\n    prn(mtx[1][1])\n\n    # 3. Fixed array of strings\n    var names: [3]txt := [\"Alice\", \"Bob\", \"Eve\"]\n    \n    prn(names[1])\n\n    ret 0\n";
+        let src = "def main() -> int:\n    # 1. Fixed-length array\n    var arr: [3]int := [100, 200, 300]\n    \n    println(arr[0])\n\n    # 2. Two-dimensional array (2 x 2)\n    var mtx: [2][2]int := [\n        [1, 0],\n        [0, 1]\n    ]\n\n    println(\"Identity Matrix:\")\n    println(mtx[0][0])\n    println(mtx[1][1])\n\n    # 3. Fixed array of strings\n    var names: [3]text := [\"Alice\", \"Bob\", \"Eve\"]\n    \n    println(names[1])\n\n    ret 0\n";
 
         let tokens = lex::lex_str(Language::Tri, src).expect("lexing succeeds");
         let _ = parse_program(&tokens).expect("program parses");

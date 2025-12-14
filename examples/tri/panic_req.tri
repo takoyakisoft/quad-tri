@@ -1,0 +1,5 @@
+def main() -> int:
+    var r: Result<int,text> := Result<int,text>::Err("div by zero")
+    var x: int := r.expect("expected req message")
+    println(x)
+    ret 0

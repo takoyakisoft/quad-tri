@@ -1,0 +1,16 @@
+enm Nod:
+    End
+    Lnk(int, ptr<Nod>)
+
+def main() -> int:
+    var tl: ptr<Nod> := mem(Nod::End)
+    var hd: Nod := Nod::Lnk(10, tl)
+
+    cas hd:
+        iff Nod::Lnk(vl, nx):
+            println(vl)
+        iff Nod::End:
+            println(0)
+
+    del(tl)
+    ret 0

@@ -33,6 +33,7 @@ pub fn build_exe(prog: &LinkedProgram, sem: &SemInfo, out_exe: &Path) -> Result<
     // 2) shim main
     let shim = r#"
 extern "C" { fn quad_main() -> i64; }
+
 fn main() {
     let code = unsafe { quad_main() };
     std::process::exit(code as i32);
@@ -76,27 +77,35 @@ fn main() {
 }
 
 fn find_quadrt_lib() -> Result<(PathBuf, String), DriverError> {
-    // quad0 の manifest dir = .../compiler/quad0
-    let compiler_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+    // CARGO_MANIFEST_DIR points at the qtri crate directory.
+    // We want the workspace root (repo root), so go up: crates/qtri -> crates -> <repo>.
+    // Also keep a fallback to the historical layout that used a nested target dir.
+    let qtri_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let crates_dir = qtri_dir
+        .parent()
+        .ok_or_else(|| derr("bad CARGO_MANIFEST_DIR"))?
+        .to_path_buf();
+    let workspace_root = crates_dir
         .parent()
         .ok_or_else(|| derr("bad CARGO_MANIFEST_DIR"))?
         .to_path_buf();
 
-    let release = compiler_dir.join("target").join("release");
-    let debug = compiler_dir.join("target").join("debug");
+    let release_roots = [workspace_root.join("target"), crates_dir.join("target")];
 
-    // MSVC: quadrt.lib / Unix: libquadrt.a
-    let candidates = if cfg!(windows) {
-        vec![
-            (release.join("qtrt.lib"), "qtrt".to_string()),
-            (debug.join("qtrt.lib"), "qtrt".to_string()),
-        ]
-    } else {
-        vec![
-            (release.join("libqtrt.a"), "qtrt".to_string()),
-            (debug.join("libqtrt.a"), "qtrt".to_string()),
-        ]
-    };
+    let mut candidates: Vec<(PathBuf, String)> = Vec::new();
+    for target_dir in release_roots {
+        let release = target_dir.join("release");
+        let debug = target_dir.join("debug");
+
+        // MSVC: qtrt.lib / Unix: libqtrt.a
+        if cfg!(windows) {
+            candidates.push((release.join("qtrt.lib"), "qtrt".to_string()));
+            candidates.push((debug.join("qtrt.lib"), "qtrt".to_string()));
+        } else {
+            candidates.push((release.join("libqtrt.a"), "qtrt".to_string()));
+            candidates.push((debug.join("libqtrt.a"), "qtrt".to_string()));
+        }
+    }
 
     for (p, name) in candidates {
         if p.exists() {

@@ -1,0 +1,20 @@
+func main() -> int:
+    cell s1: text := "Hello"
+    cell s2: text := " World"
+    
+    # Test Concat
+    cell s3: text := s1 + s2
+    println(s3) # Should be "Hello World"
+    
+    # Test Eq
+    when s1 == "Hello":
+        println(1)
+    else:
+        println(0)
+        
+    when s1 == s2:
+        println(0)
+    else:
+        println(2)
+        
+    back 0

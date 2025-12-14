@@ -11,7 +11,9 @@ These instructions apply to the entire repository.
 - Write documentation, comments, and examples in English; avoid Japanese text in new or updated content.
 
 ## Development notes
-- Build and test using Cargo from the `compiler` directory (`cargo build -p qtrt --release`, `cargo build -p qtri --release`, and `cargo check/test`). The compiler uses the Cranelift backend, so LLVM is not required, but a system linker (MSVC link.exe or cc) is needed.
+- Build and test using Cargo from the repository root (`cargo build -p qtrt --release`, `cargo build -p qtri --release`, and `cargo check/test`). The compiler uses the Cranelift backend, so LLVM is not required, but a system linker (MSVC link.exe or cc) is needed.
+- Keep `cargo check` warning-free (treat new warnings as regressions).
+- Run `cargo fmt` on Rust changes.
 - When adding examples or docs, keep keyword spellings consistent: Quad uses 4-letter keywords; Tri uses 3-letter keywords.
 - **Modules**: Import paths without extensions (e.g., `from "math"`) automatically map to `.quad` or `.tri` files. Imports must appear at the top of the file.
 - **Structs & Methods**: Use `impl` (Quad) or `imp` (Tri) blocks to define methods. The first parameter `self` (Quad) or `slf` (Tri) is required for methods (receivers) but omitted for associated functions.

@@ -20,34 +20,32 @@ Two indentation-based language prototypes.
 | Immutable binding | bind | let | Immutable local variable |
 | Mutable binding | cell | var | Mutable local variable |
 | Continue | next | nxt | Loop continue |
-| Character | char | chr | char / Unicode scalar value (u32) |
-| Byte | byte | byt | u8 / unsigned char |
 
 ## Examples
 
 Quad uses four-letter keywords and `from` imports. A minimal module-based program (see `examples/quad/modules`):
 
-```gdscript
+```text
 from "math"
 from "greeter"
 
-func main() -> intg:
+func main() -> int:
     greet("Quad modules")
 
-    cell sum: intg := add(2, 5)
-    echo("2 + 5 =")
-    echo(sum)
+    cell sum: int := add(2, 5)
+    println("2 + 5 =")
+    println(sum)
 
-    cell fact: intg := factorial(4)
-    echo("4! =")
-    echo(fact)
+    cell fact: int := factorial(4)
+    println("4! =")
+    println(fact)
 
     back 0
 ```
 
 Tri mirrors the same program with three-letter keywords and `use` imports (see `examples/tri/modules`):
 
-```python
+```text
 use "math"
 use "greeter"
 
@@ -55,63 +53,62 @@ def main() -> int:
     greet("Tri modules")
 
     var sum: int := add(2, 5)
-    prn("2 + 5 =")
-    prn(sum)
+    println("2 + 5 =")
+    println(sum)
 
     var fact: int := factorial(4)
-    prn("4! =")
-    prn(fact)
+    println("4! =")
+    println(fact)
 
     ret 0
 ```
 
 Enums and pattern matching are available with `enum`/`enm` declarations and `case`/`cas` blocks:
 
-```gdscript
+```text
 enum Event:
     Quit
-    Click(intg, intg)
+    Click(int, int)
     Key(text)
 
 func handle(e: Event) -> void:
     case e:
         when Event::Quit:
-            echo("Bye")
+            println("Bye")
 
         when Event::Click(x, y):
-            echo("Clicked at:")
-            echo(x)
+            println("Clicked at:")
+            println(x)
 
         when Event::Key(k):
-            echo("Key pressed:")
-            echo(k)
+            println("Key pressed:")
+            println(k)
 ```
 
-```python
+```text
 enm Evt:
     Qit
     Clk(int, int)
-    Key(txt)
+    Key(text)
 
-def hnd(e: Evt) -> vod:
+def hnd(e: Evt) -> void:
     cas e:
         iff Evt::Qit:
-            prn("Bye")
+            println("Bye")
 
         iff Evt::Clk(x, y):
-            prn("Clk")
-            prn(x)
+            println("Clk")
+            println(x)
 
         iff Evt::Key(k):
-            prn("Key")
-            prn(k)
+            println("Key")
+            println(k)
 ```
 
 ## Build
 Requires: Rust
 
 ```bash
-cd compiler
 cargo build -p qtrt --release
 cargo build -p qtri --release
 ```
@@ -119,34 +116,33 @@ cargo build -p qtri --release
 ## Run (for now)
 
 ```bash
-cd compiler
 # stage0 driver (compiler front-end)
 # - lex:   tokenize input
 # - build: build an executable
 
 # Lex (prints tokens)
-cargo run -p qtri --release -- lex --lang quad ../examples/quad/hello.quad
-cargo run -p qtri --release -- lex --lang tri  ../examples/tri/hello.tri
+cargo run -p qtri --release -- lex --lang quad examples/quad/hello.quad
+cargo run -p qtri --release -- lex --lang tri  examples/tri/hello.tri
 
 # Build & run a single-file example
-cargo run -p qtri --release -- build --lang quad ../examples/quad/hello.quad -o target/tmp/quad_hello.exe
+cargo run -p qtri --release -- build --lang quad examples/quad/hello.quad -o target/tmp/quad_hello.exe
 ./target/tmp/quad_hello.exe
 
-cargo run -p qtri --release -- build --lang tri  ../examples/tri/hello.tri -o target/tmp/tri_hello.exe
+cargo run -p qtri --release -- build --lang tri  examples/tri/hello.tri -o target/tmp/tri_hello.exe
 ./target/tmp/tri_hello.exe
 
 # Build & run module-based examples
-cargo run -p qtri --release -- build --lang quad ../examples/quad/modules/main.quad -o target/tmp/quad_modules.exe
+cargo run -p qtri --release -- build --lang quad examples/quad/modules/main.quad -o target/tmp/quad_modules.exe
 ./target/tmp/quad_modules.exe
 
-cargo run -p qtri --release -- build --lang tri  ../examples/tri/modules/main.tri -o target/tmp/tri_modules.exe
+cargo run -p qtri --release -- build --lang tri  examples/tri/modules/main.tri -o target/tmp/tri_modules.exe
 ./target/tmp/tri_modules.exe
 
 # Build & run struct examples (impl/imp with implicit self)
-cargo run -p qtri --release -- build --lang quad ../examples/quad/structs.quad -o target/tmp/quad_structs.exe
+cargo run -p qtri --release -- build --lang quad examples/quad/structs.quad -o target/tmp/quad_structs.exe
 ./target/tmp/quad_structs.exe
 
-cargo run -p qtri --release -- build --lang tri  ../examples/tri/structs.tri -o target/tmp/tri_structs.exe
+cargo run -p qtri --release -- build --lang tri  examples/tri/structs.tri -o target/tmp/tri_structs.exe
 ./target/tmp/tri_structs.exe
 ```
 

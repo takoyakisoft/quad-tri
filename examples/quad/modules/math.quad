@@ -1,9 +1,9 @@
-func add(a: intg, b: intg) -> intg:
+func add(a: int, b: int) -> int:
     back a + b
 
-func factorial(n: intg) -> intg:
-    cell res: intg := 1
-    cell k: intg := n
+func factorial(n: int) -> int:
+    cell res: int := 1
+    cell k: int := n
     loop k > 1:
         res := res * k
         k := k - 1

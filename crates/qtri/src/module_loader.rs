@@ -154,11 +154,11 @@ mod tests {
         let dir = tempdir().unwrap();
         let root = dir.path();
 
-        let lib = write_file(root, "lib.quad", "func helper() -> intg:\n    back 1\n");
+        let lib = write_file(root, "lib.quad", "func helper() -> int:\n    back 1\n");
         let entry = write_file(
             root,
             "main.quad",
-            "from \"lib\"\n\nfunc main() -> intg:\n    back helper()\n",
+            "from \"lib\"\n\nfunc main() -> int:\n    back helper()\n",
         );
 
         let program = load_program(Language::Quad, &entry).expect("program loads");
@@ -173,16 +173,16 @@ mod tests {
         let dir = tempdir().unwrap();
         let root = dir.path();
 
-        write_file(root, "pkg/util.quad", "func util() -> intg:\n    back 2\n");
+        write_file(root, "pkg/util.quad", "func util() -> int:\n    back 2\n");
         write_file(
             root,
             "pkg/mod.quad",
-            "from \"util\"\n\nfunc mid() -> intg:\n    back util()\n",
+            "from \"util\"\n\nfunc mid() -> int:\n    back util()\n",
         );
         let entry = write_file(
             root,
             "main.quad",
-            "from \"pkg/mod\"\n\nfunc main() -> intg:\n    back mid()\n",
+            "from \"pkg/mod\"\n\nfunc main() -> int:\n    back mid()\n",
         );
 
         let program = load_program(Language::Quad, &entry).expect("program loads");

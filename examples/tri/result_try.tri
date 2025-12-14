@@ -1,0 +1,28 @@
+def div(a: int, b: int) -> Result<int,text>:
+    iff b == 0:
+        ret Result<int,text>::Err("div by zero")
+    ret Result<int,text>::Ok(a / b)
+
+def half_of_div(a: int, b: int) -> Result<int,text>:
+    var x: int := div(a, b)?
+    ret Result<int,text>::Ok(x / 2)
+
+def main() -> int:
+    var r1: Result<int,text> := half_of_div(20, 2)
+    cas r1:
+        iff Result<int,text>::Ok(x):
+            println(x)
+        iff Result<int,text>::Err(e):
+            println(e)
+
+    var r2: Result<int,text> := half_of_div(20, 0)
+    cas r2:
+        iff Result<int,text>::Ok(x):
+            println(x)
+        iff Result<int,text>::Err(e):
+            println(e)
+
+    var v: int := r1.unwrap()
+    println(v)
+
+    ret 0

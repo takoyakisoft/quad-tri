@@ -1,13 +1,13 @@
-func main() -> intg:
-    cell i: intg := 1
+func main() -> int:
+    cell i: int := 1
     loop i <= 100:
         when i % 15 == 0:
-            echo("FizzBuzz")
+            println("FizzBuzz")
         elif i % 3 == 0:
-            echo("Fizz")
+            println("Fizz")
         elif i % 5 == 0:
-            echo("Buzz")
+            println("Buzz")
         else:
-            echo(i)
+            println(i)
         i := i + 1
     back 0

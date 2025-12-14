@@ -1,0 +1,28 @@
+func div(a: int, b: int) -> Result<int,text>:
+    when b == 0:
+        back Result<int,text>::Err("div by zero")
+    back Result<int,text>::Ok(a / b)
+
+func half_of_div(a: int, b: int) -> Result<int,text>:
+    cell x: int := div(a, b)?
+    back Result<int,text>::Ok(x / 2)
+
+func main() -> int:
+    cell r1: Result<int,text> := half_of_div(20, 2)
+    case r1:
+        when Result<int,text>::Ok(x):
+            println(x)
+        when Result<int,text>::Err(e):
+            println(e)
+
+    cell r2: Result<int,text> := half_of_div(20, 0)
+    case r2:
+        when Result<int,text>::Ok(x):
+            println(x)
+        when Result<int,text>::Err(e):
+            println(e)
+
+    cell v: int := r1.unwrap()
+    println(v)
+
+    back 0

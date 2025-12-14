@@ -8,38 +8,35 @@ pub enum Language {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Kw {
-    From,
-    Type,
-    Func,
+    Use,
+    Struct,
+    Fn,
     Impl,
     Make,
     Self_,
-    Public,
-    Private,
+    Pub,
+    Priv,
     List,
     Push,
     Enum,
     Case,
-    Lock,
-    Vars,
-    When,
+    Let,
+    Var,
+    If,
     Elif,
     Else,
     Loop,
-    Back,
+    Return,
     Open,
     Read,
-    Save,
-    Shut,
-    Heap,
-    Free,
-    Okay,
-    Fail,
-    Trap,
-    Print,
-    Stop,
-    Next,
-    Over,
+    Write,
+    Close,
+    Box,
+    Drop,
+    Panic,
+    Break,
+    Continue,
+    In,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -92,6 +89,9 @@ pub enum TokKind {
     Pipe,
     Shl,
     Shr,
+
+    // postfix operators
+    Question, // ?
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -341,6 +341,8 @@ pub fn lex_str(lang: Language, src: &str) -> Result<Vec<Token>, LexError> {
                 '[' => TokKind::LBrack,
                 ']' => TokKind::RBrack,
 
+                '?' => TokKind::Question,
+
                 '<' => TokKind::Lt,
                 '>' => TokKind::Gt,
                 '!' => TokKind::Not,
@@ -408,26 +410,26 @@ mod tests {
 
     #[test]
     fn lex_quad_minimal_with_arrow_and_indent() {
-        let src = "func main() -> intg:\n    echo(123)\n    back 0";
+        let src = "func main() -> int:\n    println(123)\n    back 0";
         let ks = kinds(Language::Quad, src);
 
         // 期待する並び（Span/行番号は見ない）
         let expected = vec![
-            TokKind::Kw(Kw::Func),
+            TokKind::Kw(Kw::Fn),
             TokKind::Ident("main".into()),
             TokKind::LParen,
             TokKind::RParen,
             TokKind::Arrow,
-            TokKind::Ident("intg".into()),
+            TokKind::Ident("int".into()),
             TokKind::Colon,
             TokKind::Newline,
             TokKind::Indent,
-            TokKind::Kw(Kw::Print),
+            TokKind::Ident("println".into()),
             TokKind::LParen,
             TokKind::Int(123),
             TokKind::RParen,
             TokKind::Newline,
-            TokKind::Kw(Kw::Back),
+            TokKind::Kw(Kw::Return),
             TokKind::Int(0),
             TokKind::Newline,
             TokKind::Dedent,
@@ -439,12 +441,12 @@ mod tests {
 
     #[test]
     fn lex_tri_keywords_map_to_normalized_kw() {
-        let src = "def main() -> int:\n    prn(123)\n    ret 0";
+        let src = "def main() -> int:\n    println(123)\n    ret 0";
         let ks = kinds(Language::Tri, src);
 
-        // Tri側も内部表現は Kw(Func/Echo/Back) に正規化される
+        // Tri keywords are normalized, but print/println are not keywords.
         let expected = vec![
-            TokKind::Kw(Kw::Func),
+            TokKind::Kw(Kw::Fn),
             TokKind::Ident("main".into()),
             TokKind::LParen,
             TokKind::RParen,
@@ -453,18 +455,54 @@ mod tests {
             TokKind::Colon,
             TokKind::Newline,
             TokKind::Indent,
-            TokKind::Kw(Kw::Print),
+            TokKind::Ident("println".into()),
             TokKind::LParen,
             TokKind::Int(123),
             TokKind::RParen,
             TokKind::Newline,
-            TokKind::Kw(Kw::Back),
+            TokKind::Kw(Kw::Return),
             TokKind::Int(0),
             TokKind::Newline,
             TokKind::Dedent,
             TokKind::Eof,
         ];
 
+        assert_eq!(ks, expected);
+    }
+
+    #[test]
+    fn lex_quad_error_handling_keywords() {
+        let src = "Option Result Some None Ok Err";
+        let ks = kinds(Language::Quad, src);
+
+        let expected = vec![
+            TokKind::Ident("Option".into()),
+            TokKind::Ident("Result".into()),
+            TokKind::Ident("Some".into()),
+            TokKind::Ident("None".into()),
+            TokKind::Ident("Ok".into()),
+            TokKind::Ident("Err".into()),
+            TokKind::Newline,
+            TokKind::Eof,
+        ];
+        assert_eq!(ks, expected);
+    }
+
+    #[test]
+    fn lex_tri_error_handling_keywords() {
+        let src = "Option Result Some None Ok Err";
+        let ks = kinds(Language::Tri, src);
+
+        let expected = vec![
+            TokKind::Ident("Option".into()),
+            TokKind::Ident("Result".into()),
+            TokKind::Ident("Some".into()),
+            TokKind::Ident("None".into()),
+            TokKind::Ident("Ok".into()),
+            TokKind::Ident("Err".into()),
+            TokKind::Newline,
+            TokKind::Eof,
+        ];
         assert_eq!(ks, expected);
     }
 }

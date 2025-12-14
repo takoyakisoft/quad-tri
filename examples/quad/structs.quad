@@ -1,19 +1,19 @@
 type User {
     name: text,
-    age: intg
+    age: int
 }
 
 impl User:
-    func make(n: text, a: intg) -> User:
+    func make(n: text, a: int) -> User:
         cell u: User := User{ name: n, age: a }
         back u
 
     func grow(self) -> void:
         self.age := self.age + 1
 
-func main() -> intg:
+func main() -> int:
     cell u: User := User.make("anna", 20)
     u.grow()
     u.grow()
-    echo(u.age)
+    println(u.age)
     back u.age
