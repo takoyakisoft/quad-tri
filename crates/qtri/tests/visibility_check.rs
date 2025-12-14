@@ -150,4 +150,82 @@ func main() -> int:
             stderr
         );
     }
+
+    // Case 3: Accessing private field within the same module should succeed
+    write_file(&temp_dir, "same_module.quad", r#"
+type Point:
+    publ x: int
+    priv y: int
+
+func main() -> int:
+    cell p: Point := Point {
+        x: 10,
+        y: 20
+    }
+    # Private field access within the same module should work
+    println(p.y)
+    back 0
+"#);
+
+    let out_same_module = temp_dir.join("same_module");
+    let build_same_module = Command::new(&qtri)
+        .current_dir(&compiler_dir)
+        .args([
+            "build",
+            "--lang",
+            "quad",
+            temp_dir.join("same_module.quad").to_str().unwrap(),
+            "-o",
+            out_same_module.to_str().unwrap(),
+        ])
+        .output()
+        .expect("failed to run qtri build");
+
+    assert!(
+        build_same_module.status.success(),
+        "Private access within same module should succeed: {}",
+        String::from_utf8_lossy(&build_same_module.stderr)
+    );
+
+    // Case 4: Struct literal initialization with private fields from another module should fail
+    write_file(&temp_dir, "main_literal.quad", r#"
+from "lib"
+
+func main() -> int:
+    # This should be a compile error because y is private
+    cell p: Point := Point {
+        x: 10,
+        y: 20
+    }
+    back 0
+"#);
+
+    let out_literal = temp_dir.join("main_literal");
+    let build_literal = Command::new(&qtri)
+        .current_dir(&compiler_dir)
+        .args([
+            "build",
+            "--lang",
+            "quad",
+            temp_dir.join("main_literal.quad").to_str().unwrap(),
+            "-o",
+            out_literal.to_str().unwrap(),
+        ])
+        .output()
+        .expect("failed to run qtri build");
+
+    if build_literal.status.success() {
+        panic!(
+            "Struct literal with private field succeeded unexpectedly:\nstdout:\n{}\nstderr:\n{}",
+            String::from_utf8_lossy(&build_literal.stdout),
+            String::from_utf8_lossy(&build_literal.stderr)
+        );
+    } else {
+        let stderr = String::from_utf8_lossy(&build_literal.stderr);
+        assert!(
+            stderr.contains("field y is private"),
+            "Expected 'field y is private' error for struct literal, got:\n{}",
+            stderr
+        );
+    }
 }
