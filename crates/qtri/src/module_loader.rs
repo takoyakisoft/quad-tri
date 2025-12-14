@@ -7,6 +7,9 @@ use crate::parse;
 
 #[derive(Debug)]
 pub enum LoadError {
+    UnknownExtension {
+        path: PathBuf,
+    },
     Lex {
         path: PathBuf,
         err: lex::LexError,
@@ -25,6 +28,9 @@ pub enum LoadError {
 impl std::fmt::Display for LoadError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
+            LoadError::UnknownExtension { path } => {
+                write!(f, "{}: unknown source file extension", path.display())
+            }
             LoadError::Lex { path, err } => write!(f, "{}: lex error: {}", path.display(), err),
             LoadError::Parse { path, err } => write!(f, "{}: parse error: {}", path.display(), err),
             LoadError::Io { path, span, err } => match span {
@@ -51,8 +57,8 @@ pub fn load_program(lang: Language, entry: &Path) -> Result<LinkedProgram, LoadE
     let mut visited = HashSet::<PathBuf>::new();
     let mut source_map = Vec::new();
 
-    // Resolve entry point extension if needed
-    let entry_resolved = resolve_extension_check_exists(lang, entry);
+    // Resolve entry point extension if needed (deterministic: by selected language)
+    let entry_resolved = resolve_extension(lang, entry);
 
     load_one(
         lang,
@@ -72,25 +78,49 @@ pub fn load_program(lang: Language, entry: &Path) -> Result<LinkedProgram, LoadE
     })
 }
 
-fn resolve_extension_check_exists(lang: Language, path: &Path) -> PathBuf {
+fn repo_root() -> PathBuf {
+    // CARGO_MANIFEST_DIR points at the qtri crate directory.
+    // We want the workspace root (repo root), so go up: crates/qtri -> crates -> <repo>.
+    let qtri_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let crates_dir = qtri_dir.parent().expect("bad CARGO_MANIFEST_DIR");
+    crates_dir
+        .parent()
+        .expect("bad CARGO_MANIFEST_DIR")
+        .to_path_buf()
+}
+
+fn other_lang(lang: Language) -> Language {
+    match lang {
+        Language::Quad => Language::Tri,
+        Language::Tri => Language::Quad,
+    }
+}
+
+fn resolve_extension(lang: Language, path: &Path) -> PathBuf {
     if path.extension().is_some() {
         return path.to_path_buf();
     }
 
-    let quad = path.with_extension("quad");
-    let tri = path.with_extension("tri");
+    // Deterministic cross-language resolution (spec-defined):
+    // try current language first, then the other language.
+    let primary = match lang {
+        Language::Quad => path.with_extension("quad"),
+        Language::Tri => path.with_extension("tri"),
+    };
+    if primary.exists() {
+        return primary;
+    }
 
-    if quad.exists() {
-        return quad;
-    }
-    if tri.exists() {
-        return tri;
+    let secondary = match other_lang(lang) {
+        Language::Quad => path.with_extension("quad"),
+        Language::Tri => path.with_extension("tri"),
+    };
+    if secondary.exists() {
+        return secondary;
     }
 
-    match lang {
-        Language::Quad => quad,
-        Language::Tri => tri,
-    }
+    // If neither exists, keep the error path deterministic.
+    primary
 }
 
 fn load_one(
@@ -113,15 +143,16 @@ fn load_one(
         return Ok(());
     }
 
-    // Determine language from file extension
-    let file_lang = if let Some(ext) = canonical.extension().and_then(|s| s.to_str()) {
-        match ext {
-            "quad" => Language::Quad,
-            "tri" => Language::Tri,
-            _ => lang,
+    // Determine language from file extension (no fallback: unknown extensions are errors)
+    let file_lang = match canonical.extension().and_then(|s| s.to_str()) {
+        Some("quad") => Language::Quad,
+        Some("tri") => Language::Tri,
+        Some(_) => {
+            return Err(LoadError::UnknownExtension {
+                path: canonical.clone(),
+            });
         }
-    } else {
-        lang
+        None => lang,
     };
 
     let file_id = source_map.len();
@@ -148,19 +179,17 @@ fn load_one(
         .unwrap_or_else(|| PathBuf::from("."));
 
     for import in parsed.imports {
-        let relative_target = base_dir.join(&import.path);
-        let mut target = resolve_extension_check_exists(file_lang, &relative_target);
+        let target_base = if import.path.starts_with("std/") {
+            // Standard library modules are resolved from the repository root.
+            repo_root().join(&import.path)
+        } else {
+            // All other imports are resolved relative to the importing file.
+            base_dir.join(&import.path)
+        };
 
-        // If not found, try std (if import path looks like std/...)
-        if !target.exists() {
-            if import.path.starts_with("std") {
-                let std_target_base = PathBuf::from(&import.path);
-                let std_target = resolve_extension_check_exists(file_lang, &std_target_base);
-                if std_target.exists() {
-                    target = std_target;
-                }
-            }
-        }
+        // Extensionless imports map to the current file language only.
+        // Cross-language imports must specify the extension explicitly.
+        let target = resolve_extension(file_lang, &target_base);
 
         load_one(
             file_lang,

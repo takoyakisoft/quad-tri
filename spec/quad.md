@@ -63,8 +63,9 @@ logic:   &&  ||
 
 ## Modules
 - `from "path/to/file"` at the top level loads another Quad source file before the current one is type-checked.
-- If the path has no extension, `.quad` is appended automatically.
+- If the path has no extension, the compiler tries `.quad` first, then `.tri` (deterministic; no heuristics).
 - Paths are resolved relative to the importing file.
+- Standard library imports starting with `std/` resolve from the repository root.
 
 ## Pointers and heap allocation
 

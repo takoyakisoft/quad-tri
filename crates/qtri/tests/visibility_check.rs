@@ -116,8 +116,10 @@ func main() -> int:
     );
 
     let out_pub = temp_dir.join("main_pub");
+    let qtrt_dir = cargo_target_dir.join("release");
     let build_pub = Command::new(&qtri)
         .current_dir(&compiler_dir)
+        .env("QTRT_LIB_DIR", &qtrt_dir)
         .args([
             "build",
             "--lang",
@@ -153,6 +155,7 @@ func main() -> int:
     let out_priv = temp_dir.join("main_priv");
     let build_priv = Command::new(&qtri)
         .current_dir(&compiler_dir)
+        .env("QTRT_LIB_DIR", &qtrt_dir)
         .args([
             "build",
             "--lang",
@@ -199,6 +202,7 @@ func main() -> int:
     let out_same_module = temp_dir.join("same_module");
     let build_same_module = Command::new(&qtri)
         .current_dir(&compiler_dir)
+        .env("QTRT_LIB_DIR", &qtrt_dir)
         .args([
             "build",
             "--lang",
@@ -233,6 +237,7 @@ func main() -> int:
     let out_literal = temp_dir.join("main_literal");
     let build_literal = Command::new(&qtri)
         .current_dir(&compiler_dir)
+        .env("QTRT_LIB_DIR", &qtrt_dir)
         .args([
             "build",
             "--lang",

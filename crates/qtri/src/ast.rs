@@ -13,7 +13,6 @@ pub struct LinkedProgram {
     pub enums: Vec<EnumDef>,
     pub structs: Vec<StructDef>,
     pub funcs: Vec<Func>,
-    #[allow(dead_code)]
     pub source_map: Vec<std::path::PathBuf>,
 }
 
@@ -72,7 +71,6 @@ pub struct Param {
     pub name: String,
     pub ty: String,
     pub mutable: bool,
-    #[allow(dead_code)]
     pub vis: Visibility,
     pub span: Span,
 }
@@ -94,13 +92,11 @@ pub enum Stmt {
     If {
         arms: Vec<(Expr, Vec<Stmt>)>,
         else_body: Option<Vec<Stmt>>,
-        #[allow(dead_code)]
         span: Span,
     },
     While {
         cond: Expr,
         body: Vec<Stmt>,
-        #[allow(dead_code)]
         span: Span,
     }, // loop <cond>:
     Foreach {

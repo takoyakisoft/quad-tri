@@ -17,6 +17,9 @@ These instructions apply to the entire repository.
 - When adding examples or docs, keep keyword spellings consistent: Quad uses 4-letter keywords; Tri uses 3-letter keywords.
 - The standard library allocation helper module is `std/mem.quad` (renamed from `std/alloc.quad`).
 - **Modules**: Import paths without extensions (e.g., `from "math"`) automatically map to `.quad` or `.tri` files. Imports must appear at the top of the file.
+- **No heuristic fallbacks**: The compiler behavior is specification-driven and deterministic. Do not add heuristic or “best effort” resolution beyond what the specs define.
+	- Extensionless imports follow a deterministic order: try the current language first (`.quad` in Quad, `.tri` in Tri), then the other language.
+	- Standard library imports starting with `std/` resolve from the repository root.
 - **Structs & Methods**: Use `impl` (Quad) or `imp` (Tri) blocks to define methods. The first parameter `self` (Quad) or `slf` (Tri) is required for methods (receivers) but omitted for associated functions.
 
 ## Documentation conventions

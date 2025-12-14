@@ -3233,20 +3233,6 @@ fn store_field(
     Ok(())
 }
 
-#[allow(dead_code)]
-fn copy_struct(
-    src: Value,
-    dst: Value,
-    layout: &StructLayout,
-    ctx: &mut CompilerCtx,
-) -> Result<(), EmitError> {
-    for fld in &layout.fields {
-        let v = load_field(src, fld.offset, &fld.ty, ctx)?;
-        store_field(dst, fld.offset, v, &fld.ty, ctx)?;
-    }
-    Ok(())
-}
-
 fn get_struct_layout(
     name: &str,
     ctx: &mut CompilerCtx,

@@ -99,7 +99,17 @@ fn cmd_build(args: Vec<String>) {
     let out_exe = out_exe.unwrap_or_else(|| die("missing -o <out.exe>"));
 
     let prog = load_program(lang, &file).unwrap_or_else(|e| die(&format!("{e}")));
-    let sem_info = sem::check(&prog).unwrap_or_else(|e| die(&format!("sem error: {e}")));
+    let sem_info = sem::check(&prog).unwrap_or_else(|e| {
+        let path = prog
+            .source_map
+            .get(e.span.file_id)
+            .map(|p| p.display().to_string())
+            .unwrap_or_else(|| format!("<file_id:{}>", e.span.file_id));
+        die(&format!(
+            "sem error: {path}:{}:{}: {}",
+            e.span.line, e.span.col, e.msg
+        ))
+    });
 
     driver::build_exe(&prog, &sem_info, &out_exe)
         .unwrap_or_else(|e| die(&format!("link error: {e}")));

@@ -689,8 +689,12 @@ fn check_stmt(
             Ok(true)
         }
         Stmt::If {
-            arms, else_body, ..
+            arms,
+            else_body,
+            span,
         } => {
+            let _ = span;
+            let mut any_ret = false;
             for (c, b) in arms {
                 let cty = check_expr(c, ret_ty, fns, methods, scopes, enums, structs, module_id)?;
                 if cty != Ty::Bool {
@@ -704,7 +708,7 @@ fn check_stmt(
                     )?;
                 }
                 scopes.pop();
-                let _ = local_ret;
+                any_ret |= local_ret;
             }
             if let Some(b) = else_body {
                 scopes.push(HashMap::new());
@@ -715,9 +719,9 @@ fn check_stmt(
                     )?;
                 }
                 scopes.pop();
-                let _ = local_ret;
+                any_ret |= local_ret;
             }
-            Ok(false)
+            Ok(any_ret)
         }
         Stmt::Case {
             scrutinee,
@@ -795,11 +799,12 @@ fn check_stmt(
             }
             // *loop_depth -= 1; // Removed.
 
-            let _ = local_ret; // Case doesn't guarantee return unless exhaustive & all arms return.
-            // Simplification: ignore return for now.
-            Ok(false)
+            // For MVP, we only need to know whether a `back` appears anywhere inside.
+            // (We do not yet do full control-flow / exhaustiveness analysis.)
+            Ok(local_ret)
         }
-        Stmt::While { cond, body, .. } => {
+        Stmt::While { cond, body, span } => {
+            let _ = span;
             let cty = check_expr(
                 cond, ret_ty, fns, methods, scopes, enums, structs, module_id,
             )?;
@@ -816,8 +821,7 @@ fn check_stmt(
             }
             scopes.pop();
             *loop_depth -= 1;
-            let _ = local_ret;
-            Ok(false)
+            Ok(local_ret)
         }
         Stmt::Foreach {
             name,
@@ -913,8 +917,7 @@ fn check_stmt(
             }
             scopes.pop();
             *loop_depth -= 1;
-            let _ = local_ret;
-            Ok(false)
+            Ok(local_ret)
         }
         Stmt::Break { span } => {
             if *loop_depth == 0 {

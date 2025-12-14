@@ -7,7 +7,7 @@
 
 func alloc_bytes_safe(size: int) -> int:
     when size < 0:
-        return 0
+        back 0
     back alloc_bytes(size)
 
 func dealloc(ptr: int, size: int) -> void:

@@ -62,8 +62,9 @@ Types are identifiers (not reserved words). Canonical spellings are: int (i64), 
 
 ## Modules
 - `use "path/to/file"` at the top level loads another Tri source file before the current one is type-checked.
-- If the path has no extension, `.tri` is appended automatically.
+- If the path has no extension, the compiler tries `.tri` first, then `.quad` (deterministic; no heuristics).
 - Paths are resolved relative to the importing file.
+- Standard library imports starting with `std/` resolve from the repository root.
 
 ## Pointers and heap allocation
 

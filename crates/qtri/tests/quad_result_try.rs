@@ -17,7 +17,27 @@ fn compiler_dir() -> PathBuf {
         .to_path_buf()
 }
 
+fn cargo_target_dir(compiler_dir: &Path) -> PathBuf {
+    std::env::var_os("CARGO_TARGET_DIR")
+        .map(PathBuf::from)
+        .unwrap_or_else(|| compiler_dir.join("target"))
+}
+
+fn ci_prebuilt() -> bool {
+    std::env::var_os("QTRI_CI_PREBUILT").is_some()
+}
+
 fn ensure_qtrt_release_staticlib_built(compiler_dir: &Path) {
+    let release_dir = cargo_target_dir(compiler_dir).join("release");
+    let lib_path = if cfg!(windows) {
+        release_dir.join("qtrt.lib")
+    } else {
+        release_dir.join("libqtrt.a")
+    };
+    if ci_prebuilt() && lib_path.exists() {
+        return;
+    }
+
     let st = Command::new("cargo")
         .current_dir(compiler_dir)
         .args(["build", "-p", "qtrt", "--release"])
@@ -27,10 +47,14 @@ fn ensure_qtrt_release_staticlib_built(compiler_dir: &Path) {
 }
 
 fn ensure_qtri_release_built(compiler_dir: &Path) -> PathBuf {
-    let qtri_release = compiler_dir
-        .join("target")
+    let qtri_release = cargo_target_dir(compiler_dir)
         .join("release")
         .join(if cfg!(windows) { "qtri.exe" } else { "qtri" });
+
+    if ci_prebuilt() && qtri_release.exists() {
+        return qtri_release;
+    }
+
     let st = Command::new("cargo")
         .current_dir(compiler_dir)
         .args(["build", "-p", "qtri", "--release"])

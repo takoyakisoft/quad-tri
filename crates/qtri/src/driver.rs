@@ -86,7 +86,6 @@ fn main() {
 fn find_quadrt_lib() -> Result<(PathBuf, String), DriverError> {
     // CARGO_MANIFEST_DIR points at the qtri crate directory.
     // We want the workspace root (repo root), so go up: crates/qtri -> crates -> <repo>.
-    // Also keep a fallback to the historical layout that used a nested target dir.
     let qtri_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let crates_dir = qtri_dir
         .parent()
@@ -97,27 +96,31 @@ fn find_quadrt_lib() -> Result<(PathBuf, String), DriverError> {
         .ok_or_else(|| derr("bad CARGO_MANIFEST_DIR"))?
         .to_path_buf();
 
-    let release_roots = [workspace_root.join("target"), crates_dir.join("target")];
+    // Deterministic resolution:
+    // 1) Optional explicit override via QTRT_LIB_DIR
+    // 2) Otherwise, workspace_root/target/release
+    let lib_name = "qtrt".to_string();
 
-    let mut candidates: Vec<(PathBuf, String)> = Vec::new();
-    for target_dir in release_roots {
-        let release = target_dir.join("release");
-        let debug = target_dir.join("debug");
-
-        // MSVC: qtrt.lib / Unix: libqtrt.a
-        if cfg!(windows) {
-            candidates.push((release.join("qtrt.lib"), "qtrt".to_string()));
-            candidates.push((debug.join("qtrt.lib"), "qtrt".to_string()));
+    if let Ok(dir) = std::env::var("QTRT_LIB_DIR") {
+        let dir = PathBuf::from(dir);
+        let lib_path = if cfg!(windows) {
+            dir.join("qtrt.lib")
         } else {
-            candidates.push((release.join("libqtrt.a"), "qtrt".to_string()));
-            candidates.push((debug.join("libqtrt.a"), "qtrt".to_string()));
+            dir.join("libqtrt.a")
+        };
+        if lib_path.exists() {
+            return Ok((dir, lib_name));
         }
     }
 
-    for (p, name) in candidates {
-        if p.exists() {
-            return Ok((p.parent().unwrap().to_path_buf(), name));
-        }
+    let dir = workspace_root.join("target").join("release");
+    let lib_path = if cfg!(windows) {
+        dir.join("qtrt.lib")
+    } else {
+        dir.join("libqtrt.a")
+    };
+    if lib_path.exists() {
+        return Ok((dir, lib_name));
     }
 
     Err(derr(
