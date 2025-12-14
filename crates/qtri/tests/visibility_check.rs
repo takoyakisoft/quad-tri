@@ -111,7 +111,7 @@ func main() -> int:
         String::from_utf8_lossy(&build_pub.stderr)
     );
 
-    // Case 2: Accessing private field SHOULD fail, but currently succeeds (bug)
+    // Case 2: Verifies that accessing a private field fails as expected
     write_file(&temp_dir, "main_priv.quad", r#"
 from "lib"
 
