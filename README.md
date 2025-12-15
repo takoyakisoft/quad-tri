@@ -1,3 +1,7 @@
+This repository was entirely created by AI.
+Therefore, it is recommended to read it through AI.
+Gemini 3.0 Pro created most of the code, and GPT-5.2 handled bug fixing.
+
 # Quad/Tri (prototype)
 
 Two indentation-based language prototypes.
