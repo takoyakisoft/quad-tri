@@ -3,7 +3,7 @@ enm Nod:
     Lnk(int, Ptr<Nod>)
 
 def main() -> int:
-    var tl: Ptr<Nod> := mem(Nod::End)
+    var tl: Ptr<Nod> := alloc(Nod::End)
     var hd: Nod := Nod::Lnk(10, tl)
 
     cas hd:
@@ -12,5 +12,5 @@ def main() -> int:
         iff Nod::End:
             println(0)
 
-    del(tl)
+    dealloc(tl)
     ret 0

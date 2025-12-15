@@ -25,6 +25,9 @@ pub fn keyword_of(s: &str) -> Option<Kw> {
         "enum" => Kw::Enum,  // enum type
         "case" => Kw::Case,  // pattern match
 
+        "true" => Kw::True,
+        "fals" => Kw::False,
+
         _ => return None,
     })
 }

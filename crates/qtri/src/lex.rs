@@ -28,6 +28,9 @@ pub enum Kw {
     Break,
     Continue,
     In,
+
+    True,
+    False,
 }
 
 #[derive(Debug, Clone, PartialEq)]

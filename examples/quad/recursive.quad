@@ -3,7 +3,7 @@ enum Node:
     Link(int, Addr<Node>)
 
 func main() -> int:
-    cell tail: Addr<Node> := heap(Node::Ende)
+    cell tail: Addr<Node> := alloc(Node::Ende)
     cell head: Node := Node::Link(10, tail)
 
     case head:
@@ -12,5 +12,5 @@ func main() -> int:
         when Node::Ende:
             println(0)
 
-    free(tail)
+    dealloc(tail)
     back 0
