@@ -1,0 +1,15 @@
+use "std/math"
+use "greeter"
+
+def main() -> int:
+    greet("Tri modules")
+
+    var sum: int := add(2, 5)
+    println("2 + 5 =")
+    println(sum)
+
+    var fact: int := factorial(4)
+    println("4! =")
+    println(fact)
+
+    ret 0

@@ -1,0 +1,42 @@
+from "std/map"
+
+type WordCounter:
+    publ m: StrMap
+
+impl WordCounter:
+    func make() -> WordCounter:
+        back WordCounter(m: StrMap.make())
+
+    func add(self, w: text) -> void:
+        when self.m.contains(w):
+            self.m.insert(w, self.m.get(w) + 1)
+        else:
+            self.m.insert(w, 1)
+
+    func drop(self) -> void:
+        self.m.drop()
+
+func main() -> int:
+    cell words: [6]text := [
+        "foo",
+        "bar",
+        "foo",
+        "baz",
+        "foo",
+        "bar"
+    ]
+
+    cell c: WordCounter := WordCounter.make()
+
+    cell i: int := 0
+    loop i < 6:
+        c.add(words[i])
+        i := i + 1
+
+    println("foo:")
+    println(c.m.get("foo"))
+    println("bar:")
+    println(c.m.get("bar"))
+
+    c.drop()
+    back 0
