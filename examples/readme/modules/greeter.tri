@@ -1,0 +1,3 @@
+def greet(name: text) -> void:
+    println("hello, ")
+    println(name)

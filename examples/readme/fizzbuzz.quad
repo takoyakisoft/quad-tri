@@ -1,0 +1,13 @@
+func main() -> int:
+    cell i: int := 1
+    loop i <= 20:
+        when i % 15 == 0:
+            println("FizzBuzz")
+        elif i % 3 == 0:
+            println("Fizz")
+        elif i % 5 == 0:
+            println("Buzz")
+        else:
+            println(i)
+        i := i + 1
+    back 0

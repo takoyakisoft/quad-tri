@@ -1,0 +1,13 @@
+def main() -> int:
+    var i: int := 1
+    for i <= 20:
+        iff i % 15 == 0:
+            println("FizzBuzz")
+        elf i % 3 == 0:
+            println("Fizz")
+        elf i % 5 == 0:
+            println("Buzz")
+        els:
+            println(i)
+        i := i + 1
+    ret 0

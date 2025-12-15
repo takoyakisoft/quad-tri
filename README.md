@@ -138,8 +138,7 @@ impl WordCounter:
             self.m.insert(w, 1)
 
     func drop(self) -> void:
-        dealloc(self.m.keys)
-        dealloc(self.m.vals)
+        self.m.drop()
 
 func main() -> int:
     cell words: [6]text := [
@@ -176,7 +175,7 @@ typ Wrd:
     pub m: StrMap
 
 imp Wrd:
-    def mak(slf) -> Wrd:
+    def mak() -> Wrd:
         ret Wrd(m: StrMap.make())
 
     def add(slf, w: text) -> void:
@@ -186,8 +185,7 @@ imp Wrd:
             slf.m.insert(w, 1)
 
     def drp(slf) -> void:
-        dealloc(slf.m.keys)
-        dealloc(slf.m.vals)
+        slf.m.drop()
 
 def main() -> int:
     var wds: [6]text := [
@@ -218,7 +216,7 @@ def main() -> int:
 Quad uses four-letter keywords and `from` imports. A minimal module-based program (see `examples/quad/modules`):
 
 ```gdscript
-from "math"
+from "std/math"
 from "greeter"
 
 func main() -> int:
@@ -238,7 +236,7 @@ func main() -> int:
 Tri mirrors the same program with three-letter keywords and `use` imports (see `examples/tri/modules`):
 
 ```python
-use "math"
+use "std/math"
 use "greeter"
 
 def main() -> int:
@@ -313,28 +311,28 @@ cargo build -p qtri --release
 # - build: build an executable
 
 # Lex (prints tokens)
-cargo run -p qtri --release -- lex --lang quad examples/quad/hello.quad
-cargo run -p qtri --release -- lex --lang tri  examples/tri/hello.tri
+cargo run -p qtri --release -- lex --lang quad examples/readme/hello.quad
+cargo run -p qtri --release -- lex --lang tri  examples/readme/hello.tri
 
 # Build & run a single-file example
-cargo run -p qtri --release -- build --lang quad examples/quad/hello.quad -o target/tmp/quad_hello.exe
+cargo run -p qtri --release -- build --lang quad examples/readme/hello.quad -o target/tmp/quad_hello.exe
 ./target/tmp/quad_hello.exe
 
-cargo run -p qtri --release -- build --lang tri  examples/tri/hello.tri -o target/tmp/tri_hello.exe
+cargo run -p qtri --release -- build --lang tri  examples/readme/hello.tri -o target/tmp/tri_hello.exe
 ./target/tmp/tri_hello.exe
 
 # Build & run module-based examples
-cargo run -p qtri --release -- build --lang quad examples/quad/modules/main.quad -o target/tmp/quad_modules.exe
+cargo run -p qtri --release -- build --lang quad examples/readme/modules/main.quad -o target/tmp/quad_modules.exe
 ./target/tmp/quad_modules.exe
 
-cargo run -p qtri --release -- build --lang tri  examples/tri/modules/main.tri -o target/tmp/tri_modules.exe
+cargo run -p qtri --release -- build --lang tri  examples/readme/modules/main.tri -o target/tmp/tri_modules.exe
 ./target/tmp/tri_modules.exe
 
 # Build & run struct examples (impl/imp with implicit self)
-cargo run -p qtri --release -- build --lang quad examples/quad/structs.quad -o target/tmp/quad_structs.exe
+cargo run -p qtri --release -- build --lang quad examples/readme/word_counter.quad -o target/tmp/quad_structs.exe
 ./target/tmp/quad_structs.exe
 
-cargo run -p qtri --release -- build --lang tri  examples/tri/structs.tri -o target/tmp/tri_structs.exe
+cargo run -p qtri --release -- build --lang tri  examples/readme/word_counter.tri -o target/tmp/tri_structs.exe
 ./target/tmp/tri_structs.exe
 ```
 

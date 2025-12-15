@@ -1,0 +1,23 @@
+enum Event:
+    Quit
+    Click(int, int)
+    Key(text)
+
+func handle(e: Event) -> void:
+    case e:
+        when Event::Quit:
+            println("Bye")
+
+        when Event::Click(x, y):
+            println("Clicked at:")
+            println(x)
+
+        when Event::Key(k):
+            println("Key pressed:")
+            println(k)
+
+func main() -> int:
+    handle(Event::Quit)
+    handle(Event::Click(10, 20))
+    handle(Event::Key("a"))
+    back 0

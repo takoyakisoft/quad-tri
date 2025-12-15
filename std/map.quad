@@ -41,3 +41,9 @@ impl StrMap:
                 back true
             i := i + 1
         back fals
+
+    func drop(self) -> void:
+        self.keys.dealloc()
+        self.vals.dealloc()
+        dealloc(self.keys)
+        dealloc(self.vals)
