@@ -142,7 +142,11 @@ fn quad_bool_keywords_work() {
     .expect("failed to write quad source");
 
     let out_dir = mk_temp_dir("qtri_bool_quad_out");
-    let out_exe = out_dir.join(if cfg!(windows) { "bool_quad.exe" } else { "bool_quad" });
+    let out_exe = out_dir.join(if cfg!(windows) {
+        "bool_quad.exe"
+    } else {
+        "bool_quad"
+    });
 
     let lines = build_and_run("quad", &main_src, &out_exe);
     assert_eq!(lines, vec!["t is true", "f is fals"]);
@@ -160,7 +164,11 @@ fn tri_bool_keywords_work() {
     .expect("failed to write tri source");
 
     let out_dir = mk_temp_dir("qtri_bool_tri_out");
-    let out_exe = out_dir.join(if cfg!(windows) { "bool_tri.exe" } else { "bool_tri" });
+    let out_exe = out_dir.join(if cfg!(windows) {
+        "bool_tri.exe"
+    } else {
+        "bool_tri"
+    });
 
     let lines = build_and_run("tri", &main_src, &out_exe);
     assert_eq!(lines, vec!["t is tru", "f is fal"]);
