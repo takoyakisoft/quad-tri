@@ -1,4 +1,5 @@
 func main() -> int:
+    write_file("test.txt", "Hello File IO")
     cell content: text := read_file("test.txt")
     println(content)
     back 0

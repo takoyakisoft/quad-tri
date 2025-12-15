@@ -22,6 +22,38 @@ impl FatPtr {
     }
 }
 
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn qtrt_write_file(path: *const FatPtr, content: *const FatPtr) {
+    unsafe {
+        if path.is_null() || (*path).ptr.is_null() {
+            eprintln!("Error: File path is null");
+            std::process::exit(1);
+        }
+        if content.is_null() || (*content).ptr.is_null() {
+            eprintln!("Error: Content is null");
+            std::process::exit(1);
+        }
+
+        let slice = std::slice::from_raw_parts((*path).ptr, (*path).len);
+        let path_str = match std::str::from_utf8(slice) {
+            Ok(s) => s,
+            Err(_) => {
+                eprintln!("Error: File path is not valid UTF-8");
+                std::process::exit(1);
+            }
+        };
+
+        let content_slice = std::slice::from_raw_parts((*content).ptr, (*content).len);
+        match std::fs::write(path_str, content_slice) {
+            Ok(_) => {}
+            Err(e) => {
+                eprintln!("Error: Could not write file '{}': {}", path_str, e);
+                std::process::exit(1);
+            }
+        }
+    }
+}
+
 #[inline]
 unsafe fn bytes(len: usize, elem_size: usize) -> usize {
     len.checked_mul(elem_size)

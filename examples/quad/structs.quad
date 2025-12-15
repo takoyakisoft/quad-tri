@@ -15,4 +15,4 @@ func main() -> int:
     u.grow()
     u.grow()
     println(u.age)
-    back u.age
+    back 0

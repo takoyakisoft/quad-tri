@@ -167,6 +167,16 @@ pub fn check(prog: &LinkedProgram) -> Result<SemInfo, SemError> {
             params: vec![("path".to_string(), Ty::Text)],
         },
     );
+    fns.insert(
+        "write_file".to_string(),
+        FnSig {
+            ret: Ty::Void,
+            params: vec![
+                ("path".to_string(), Ty::Text),
+                ("content".to_string(), Ty::Text),
+            ],
+        },
+    );
 
     let mut enums: HashMap<String, EnumInfo> = HashMap::new();
     let mut structs: HashMap<String, StructInfo> = HashMap::new();

@@ -12,3 +12,6 @@
 *.a
 *.so
 *.dylib
+
+*.stdout
+*.txt
