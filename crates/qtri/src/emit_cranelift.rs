@@ -427,6 +427,29 @@ pub fn emit_module(prog: &LinkedProgram, sem: &SemInfo) -> Result<Vec<u8>, EmitE
         })?;
     ext_fns.insert("qtrt_read_file".to_string(), id_read_file);
 
+    // qtrt_write_file
+    // fn qtrt_write_file(path: *const FatPtr, content: *const FatPtr)
+    let mut sig_write_file = module.make_signature();
+    sig_write_file
+        .params
+        .push(AbiParam::new(module.target_config().pointer_type())); // path
+    sig_write_file
+        .params
+        .push(AbiParam::new(module.target_config().pointer_type())); // content
+    let id_write_file = module
+        .declare_function("qtrt_write_file", Linkage::Import, &sig_write_file)
+        .map_err(|e| {
+            eerr(
+                Span {
+                    file_id: 0,
+                    line: 0,
+                    col: 0,
+                },
+                e.to_string(),
+            )
+        })?;
+    ext_fns.insert("qtrt_write_file".to_string(), id_write_file);
+
     // qtrt_itoa
     // fn qtrt_itoa(sret: *mut FatPtr, n: i64)
     let mut sig_itoa = module.make_signature();
@@ -2363,6 +2386,45 @@ fn compile_expr(expr: &Expr, ctx: &mut CompilerCtx) -> Result<ValueKind, EmitErr
                         ty: Ty::Text,
                         slot: Some(slot),
                     });
+                }
+
+                if fname == "write_file" {
+                    if args.len() != 2 {
+                        return Err(eerr(*span, "write_file expects 2 args"));
+                    }
+                    let path_expr = match &args[0] {
+                        Arg::Pos(e) => e,
+                        _ => return Err(eerr(*span, "write_file expects positional arg")),
+                    };
+                    let content_expr = match &args[1] {
+                        Arg::Pos(e) => e,
+                        _ => return Err(eerr(*span, "write_file expects positional arg")),
+                    };
+
+                    let path_val = compile_expr(path_expr, ctx)?;
+                    let path_addr = match path_val {
+                        ValueKind::AggregatePtr {
+                            addr, ty: Ty::Text, ..
+                        } => addr,
+                        _ => return Err(eerr(*span, "write_file expects text path")),
+                    };
+
+                    let content_val = compile_expr(content_expr, ctx)?;
+                    let content_addr = match content_val {
+                        ValueKind::AggregatePtr {
+                            addr, ty: Ty::Text, ..
+                        } => addr,
+                        _ => return Err(eerr(*span, "write_file expects text content")),
+                    };
+
+                    let fid = ctx.ext_fns.get("qtrt_write_file").unwrap();
+                    let fref = ctx.module.declare_func_in_func(*fid, ctx.builder.func);
+                    ctx.builder.ins().call(fref, &[path_addr, content_addr]);
+
+                    return Ok(ValueKind::Scalar(
+                        ctx.builder.ins().iconst(types::I64, 0),
+                        Ty::Void,
+                    ));
                 }
 
                 if fname == "sys_write" || fname == "sys_writeln" {
