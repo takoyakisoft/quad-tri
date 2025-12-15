@@ -203,7 +203,7 @@ fn quad_soa_points_using_std_vec_pointers() {
     // Structure-of-Arrays (SoA): store fields in two vectors, accessed via Addr receivers.
     std::fs::write(
         &main_src,
-        "from \"std/vec\"\n\ntype PointsSoA:\n    publ xs: IntVec\n    publ ys: IntVec\n\nfunc make_points() -> PointsSoA:\n    back PointsSoA(xs: IntVec.make(4), ys: IntVec.make(4))\n\nfunc main() -> int:\n    cell p: PointsSoA := make_points()\n\n    p.xs.push(1)\n    p.ys.push(10)\n    p.xs.push(2)\n    p.ys.push(20)\n\n    println(p.xs.len())\n    println(p.ys.get(1))\n\n    p.xs.free()\n    p.ys.free()\n    back 0\n",
+        "from \"std/vec\"\n\ntype PointsSoA:\n    publ xs: IntVec\n    publ ys: IntVec\n\nfunc make_points() -> PointsSoA:\n    back PointsSoA(xs: IntVec.make(4), ys: IntVec.make(4))\n\nfunc main() -> int:\n    cell p: PointsSoA := make_points()\n\n    p.xs.push(1)\n    p.ys.push(10)\n    p.xs.push(2)\n    p.ys.push(20)\n\n    println(p.xs.len())\n    println(p.ys.get(1))\n\n    p.xs.dealloc()\n    p.ys.dealloc()\n    back 0\n",
     )
     .expect("failed to write quad source");
 
@@ -243,7 +243,7 @@ fn tri_soa_points_using_std_vec_pointers() {
 
     std::fs::write(
         &main_src,
-        "use \"std/vec\"\n\ntyp Pts:\n    pub xs: IntVec\n    pub ys: IntVec\n\ndef make_pts() -> Pts:\n    ret Pts(xs: IntVec.make(4), ys: IntVec.make(4))\n\ndef main() -> int:\n    var p: Pts := make_pts()\n\n    p.xs.push(1)\n    p.ys.push(10)\n    p.xs.push(2)\n    p.ys.push(20)\n\n    println(p.xs.len())\n    println(p.ys.get(1))\n\n    p.xs.free()\n    p.ys.free()\n    ret 0\n",
+        "use \"std/vec\"\n\ntyp Pts:\n    pub xs: IntVec\n    pub ys: IntVec\n\ndef make_pts() -> Pts:\n    ret Pts(xs: IntVec.make(4), ys: IntVec.make(4))\n\ndef main() -> int:\n    var p: Pts := make_pts()\n\n    p.xs.push(1)\n    p.ys.push(10)\n    p.xs.push(2)\n    p.ys.push(20)\n\n    println(p.xs.len())\n    println(p.ys.get(1))\n\n    p.xs.dealloc()\n    p.ys.dealloc()\n    ret 0\n",
     )
     .expect("failed to write tri source");
 

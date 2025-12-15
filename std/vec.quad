@@ -54,7 +54,7 @@ impl IntVec:
     func len(self) -> int:
         back ptr_get_int(self.handle, 0)
 
-    func free(self) -> void:
+    func dealloc(self) -> void:
         cell cap: int := ptr_get_int(self.handle, 1)
         cell data: int := ptr_get_int(self.handle, 2)
         sys_dealloc(data, cap * 8)
@@ -116,7 +116,7 @@ impl TextVec:
     func len(self) -> int:
         back ptr_get_int(self.handle, 0)
 
-    func free(self) -> void:
+    func dealloc(self) -> void:
         cell cap: int := ptr_get_int(self.handle, 1)
         cell data: int := ptr_get_int(self.handle, 2)
         sys_dealloc(data, cap * 24)

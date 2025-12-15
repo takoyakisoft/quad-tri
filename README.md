@@ -134,8 +134,8 @@ impl WordCounter:
             self.m.insert(w, 1)
 
     func drop(self) -> void:
-        free(self.m.keys)
-        free(self.m.vals)
+        dealloc(self.m.keys)
+        dealloc(self.m.vals)
 
 func main() -> int:
     cell words: [6]text := [
@@ -182,8 +182,8 @@ imp Wrd:
             slf.m.insert(w, 1)
 
     def drp(slf) -> void:
-        del(slf.m.keys)
-        del(slf.m.vals)
+        dealloc(slf.m.keys)
+        dealloc(slf.m.vals)
 
 def main() -> int:
     var wds: [6]text := [
