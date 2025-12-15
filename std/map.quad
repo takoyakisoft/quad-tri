@@ -10,7 +10,7 @@ impl StrMap:
 
     func insert(self, k: text, v: int) -> void:
         cell i: int := 0
-        loop 1==1:
+        loop true:
             when i == self.keys.len():
                 stop
             when self.keys.get(i) == k:
@@ -23,7 +23,7 @@ impl StrMap:
 
     func get(self, k: text) -> int:
         cell i: int := 0
-        loop 1==1:
+        loop true:
             when i == self.keys.len():
                 stop
             when self.keys.get(i) == k:
@@ -34,10 +34,10 @@ impl StrMap:
 
     func contains(self, k: text) -> bool:
         cell i: int := 0
-        loop 1==1:
+        loop true:
             when i == self.keys.len():
                 stop
             when self.keys.get(i) == k:
-                back 1==1
+                back true
             i := i + 1
-        back 1==0
+        back fals

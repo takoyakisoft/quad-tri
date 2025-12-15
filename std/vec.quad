@@ -22,7 +22,7 @@ impl IntVec:
             cell new_cap: int := cap * 2
             cell new_data: int := alloc_bytes(new_cap * 8)
             cell i: int := 0
-            loop 1==1:
+            loop true:
                 when i == len:
                     stop
                 ptr_set_int(new_data, i, ptr_get_int(data, i))
@@ -84,7 +84,7 @@ impl TextVec:
             cell new_cap: int := cap * 2
             cell new_data: int := alloc_bytes(new_cap * 24)
             cell i: int := 0
-            loop 1==1:
+            loop true:
                 when i == len:
                     stop
                 ptr_set_text(new_data, i, ptr_get_text(data, i))

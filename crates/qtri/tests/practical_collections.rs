@@ -157,7 +157,7 @@ fn quad_dict_text_to_struct_via_parallel_arrays() {
     // Dictionary-like lookup: keys: [text], values: [Point].
     std::fs::write(
         &main_src,
-        "type Point:\n    publ x: int\n    publ y: int\n\nfunc find_y(keys: [2]text, vals: [2]Point, n: int, k: text) -> int:\n    cell i: int := 0\n    loop 1==1:\n        when i == n:\n            stop\n        when keys[i] == k:\n            back vals[i].y\n        i := i + 1\n    sys_panic(\"not found\")\n    back 0\n\nfunc main() -> int:\n    cell keys: [2]text := [\n        \"foo\",\n        \"bar\"\n    ]\n    cell vals: [2]Point := [\n        Point(x: 1, y: 11),\n        Point(x: 2, y: 22)\n    ]\n\n    println(find_y(keys, vals, 2, \"bar\"))\n    back 0\n",
+        "type Point:\n    publ x: int\n    publ y: int\n\nfunc find_y(keys: [2]text, vals: [2]Point, n: int, k: text) -> int:\n    cell i: int := 0\n    loop true:\n        when i == n:\n            stop\n        when keys[i] == k:\n            back vals[i].y\n        i := i + 1\n    sys_panic(\"not found\")\n    back 0\n\nfunc main() -> int:\n    cell keys: [2]text := [\n        \"foo\",\n        \"bar\"\n    ]\n    cell vals: [2]Point := [\n        Point(x: 1, y: 11),\n        Point(x: 2, y: 22)\n    ]\n\n    println(find_y(keys, vals, 2, \"bar\"))\n    back 0\n",
     )
     .expect("failed to write quad source");
 
@@ -180,7 +180,7 @@ fn quad_dict_text_to_array_via_parallel_arrays() {
     // Dictionary-like lookup: keys: [text], values: [[int]].
     std::fs::write(
         &main_src,
-        "func find_first(keys: [2]text, vals: [2][3]int, n: int, k: text) -> int:\n    cell i: int := 0\n    loop 1==1:\n        when i == n:\n            stop\n        when keys[i] == k:\n            back vals[i][0]\n        i := i + 1\n    sys_panic(\"not found\")\n    back 0\n\nfunc main() -> int:\n    cell keys: [2]text := [\n        \"a\",\n        \"b\"\n    ]\n    cell vals: [2][3]int := [\n        [1, 2, 3],\n        [10, 20, 30]\n    ]\n\n    println(find_first(keys, vals, 2, \"b\"))\n    back 0\n",
+        "func find_first(keys: [2]text, vals: [2][3]int, n: int, k: text) -> int:\n    cell i: int := 0\n    loop true:\n        when i == n:\n            stop\n        when keys[i] == k:\n            back vals[i][0]\n        i := i + 1\n    sys_panic(\"not found\")\n    back 0\n\nfunc main() -> int:\n    cell keys: [2]text := [\n        \"a\",\n        \"b\"\n    ]\n    cell vals: [2][3]int := [\n        [1, 2, 3],\n        [10, 20, 30]\n    ]\n\n    println(find_first(keys, vals, 2, \"b\"))\n    back 0\n",
     )
     .expect("failed to write quad source");
 

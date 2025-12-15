@@ -4,7 +4,7 @@ func args() -> TextVec:
     cell n: int := args_count()
     cell v: TextVec := TextVec.make(n)
     cell i: int := 0
-    loop 1==1:
+    loop true:
         when i == n:
             stop
         v.push(arg_get(i))
