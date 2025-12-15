@@ -1,7 +1,7 @@
 # Tri Syntax (Strict MVP)
 
 ## Keywords (3 letters)
-use, typ, enm, cas, def, let, var, pub, prv, iff, elf, els, for, ret, brk, nxt, ovr, imp, slf, mem, del, die
+use, typ, enm, cas, def, let, var, pub, prv, iff, elf, els, for, ret, brk, nxt, ovr, imp, slf, die
 
 | Concept | Quad (4 letters) | Tri (3 letters) | Meaning |
 | --- | --- | --- | --- |
@@ -75,4 +75,4 @@ Tri exposes a simple typed pointer form via `Ptr<T>`.
 
 Notes:
 
-- `mem` and `del` are built-ins (and keywords), not user-defined functions.
+- `alloc` and `dealloc` are built-ins, not user-defined functions.

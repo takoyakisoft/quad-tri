@@ -1,7 +1,7 @@
 # Quad Syntax (Strict MVP)
 
 ## Keywords (4 letters)
-from, type, enum, case, func, bind, cell, publ, priv, when, elif, else, loop, back, stop, next, over, impl, self, heap, free, trap
+from, type, enum, case, func, bind, cell, publ, priv, when, elif, else, loop, back, stop, next, over, impl, self, trap
 
 | Concept | Quad (4 letters) | Tri (3 letters) | Meaning |
 | --- | --- | --- | --- |
@@ -77,5 +77,5 @@ Quad exposes a simple typed pointer form via `Addr<T>`.
 
 Notes:
 
-- `heap`, `deref`, and `free` are built-ins (and keywords), not user-defined functions.
-- `free` is also used to drop managed runtime values like `text` and dynamic arrays.
+- `alloc`, `deref`, and `dealloc` are built-ins, not user-defined functions.
+- `dealloc` is also used to drop managed runtime values like `text` and dynamic arrays.
