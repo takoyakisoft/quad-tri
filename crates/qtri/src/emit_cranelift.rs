@@ -1396,9 +1396,7 @@ fn compile_stmt(stmt: &Stmt, ctx: &mut CompilerCtx) -> Result<(), EmitError> {
 fn compile_expr(expr: &Expr, ctx: &mut CompilerCtx) -> Result<ValueKind, EmitError> {
     match expr {
         Expr::Bool(b, _) => Ok(ValueKind::Scalar(
-            ctx.builder
-                .ins()
-                .iconst(types::I8, if *b { 1 } else { 0 }),
+            ctx.builder.ins().iconst(types::I8, if *b { 1 } else { 0 }),
             Ty::Bool,
         )),
         Expr::Int(n, _) => Ok(ValueKind::Scalar(
