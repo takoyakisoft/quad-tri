@@ -71,8 +71,9 @@ Types are identifiers (not reserved words). Canonical spellings are: int (i64), 
 Tri exposes a simple typed pointer form via `Ptr<T>`.
 
 - `alloc(expr) -> Ptr<T>` allocates a copy of `expr` on the heap.
+- `deref(ptr) -> T` loads the value pointed to by `ptr`.
 - `dealloc(ptr)` deallocates the heap allocation.
 
 Notes:
 
-- `alloc` and `dealloc` are built-ins, not user-defined functions.
+- `alloc`, `deref`, and `dealloc` are built-ins, not user-defined functions.
